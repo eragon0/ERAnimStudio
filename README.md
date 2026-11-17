@@ -6,7 +6,7 @@ It is DS Anim Studio 5.0-RC6.1 with tools for Elden Ring animation modding added
 
 ## Download
 
-Get the zip from the [Releases](https://github.com/eragon0/ERAnimStudio/releases) page, unzip it anywhere and run `DS ANIM STUDIO.exe` (the program file keeps its original name).
+Get the zip from the [Releases](https://github.com/eragon0/ERAnimStudio/releases) page, unzip it anywhere and run `DS ANIM STUDIO.exe`.
 
 ## Requirements
 
@@ -29,8 +29,8 @@ Get the zip from the [Releases](https://github.com/eragon0/ERAnimStudio/releases
 
 Things to know:
 
-- The new hkx is written into the binder **at once**, not when you save the project.
-- Crops and mirrors are re-encoded the way Elden Ring's files are (spline-compressed by Havok Content Tools), then read back and compared with the edit; a result more than 1 cm off is not written.
+- The new hkx is written into the binder **immediately**, not when you save the project.
+- Crops and mirrors are re-encoded the way Elden Ring's files are, spline-compressed by Havok Content Tools.
 - The game plays a new animation ID only if the character's behavior (`c0000.behbnd.dcx`) has a clip for it, and weapon-side animations in a weapon's model follow animation IDs too. Neither is changed by this tool.
 - Elden Ring projects only.
 
