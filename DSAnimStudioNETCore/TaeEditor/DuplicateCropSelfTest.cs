@@ -219,6 +219,14 @@ namespace DSAnimStudio.TaeEditor
                         string binder = binderName == null ? null
                             : binders.FirstOrDefault(b => Path.GetFileName(b).Equals(binderName, StringComparison.OrdinalIgnoreCase)) ?? binderName;
                         Note($"  binders offered: {string.Join(", ", binders.Select(Path.GetFileName))}; writing into {Path.GetFileName(binder ?? "(the first)")}");
+                        // what the dialog would show for these inputs
+                        var look = DuplicateCrop.Look(tae, sel, Str(c, "target"), Str(c, "first"), Str(c, "last"),
+                            c.TryGetProperty("mirror", out var lm) && lm.GetBoolean(), dest, c.TryGetProperty("move", out var lmo) && lmo.GetBoolean(),
+                            binders.Contains(binder ?? "", StringComparer.OrdinalIgnoreCase) ? binder : (binders.Count > 0 && binder == null ? binders[0] : null),
+                            DuplicateCrop.SourceLastFrame(DuplicateCrop.Container(tae), sel.GetHkxID(tae.Proj)), DuplicateCrop.HctStatus(out bool hf) != null && hf,
+                            "none in the list");
+                        Note($"  dialog: new ID '{look.IdStatus}' (level {look.IdLevel}); {(look.Problem != null ? "Accept off: " + look.Problem : "Accept on")}; summary: {look.Summary}");
+                        Note($"  dialog: binder offered first {Path.GetFileName(binders.Count > 0 ? binders[DuplicateCrop.DefaultBinder(dest, binders)] : "none")}");
                         string err = DuplicateCrop.Check(tae, sel, Str(c, "target"), Str(c, "first"), Str(c, "last"), out var req,
                                                          c.TryGetProperty("mirror", out var mv) && mv.GetBoolean(), dest,
                                                          c.TryGetProperty("move", out var mo) && mo.GetBoolean(), binder);

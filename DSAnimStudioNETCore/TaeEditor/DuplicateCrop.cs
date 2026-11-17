@@ -148,8 +148,115 @@ namespace DSAnimStudio.TaeEditor
             return list;
         }
 
-        // the binder picked last, offered first the next time
+        // the binder picked last, offered first the next time (kept in the config); the mirror and the tab, for the session
         public static string LastBinderName;
+        public static bool LastMirror;
+        public static zzz_DocumentIns LastTabDocument;
+
+        /// <summary>
+        /// The binder offered first: the one picked last, else one the game doesn't ship (not in the game folder's chr folder),
+        /// the largest of them (a mod's own binder holds its animations), else the first.
+        /// </summary>
+        public static int DefaultBinder(TaeEditorScreen tab, List<string> binders)
+        {
+            if (binders.Count == 0)
+                return 0;
+            int last = binders.FindIndex(b => Path.GetFileName(b).Equals(LastBinderName, StringComparison.OrdinalIgnoreCase));
+            if (last >= 0)
+                return last;
+            string gameChr = tab?.ParentDocument?.GameData?.InterrootPath is string g && !string.IsNullOrWhiteSpace(g) ? Path.Combine(g, "chr") : null;
+            var own = binders.Select((b, i) => (b, i))
+                .Where(x => gameChr == null || !File.Exists(Path.Combine(gameChr, Path.GetFileName(x.b))))
+                .OrderByDescending(x => new FileInfo(x.b).Length).ToList();
+            return own.Count > 0 ? own[0].i : 0;
+        }
+
+        /// <summary>What the dialog shows as the user types: the new ID's state, what Accept will do, or why it can't yet.</summary>
+        public sealed class LookResult
+        {
+            public string IdStatus;
+            public int IdLevel;         // 0 fine, 1 a question will follow, 2 refused
+            public string Summary;
+            public string Problem;      // null: Accept can go ahead (the full check still runs)
+            public bool ProblemIsHct;
+        }
+
+        public static LookResult Look(TaeEditorScreen tae, DSAProj.Animation source, string target, string first, string last, bool mirror,
+                                      TaeEditorScreen dest, bool move, string binder, int? sourceLast, bool hctFound, string binderError)
+        {
+            var r = new LookResult();
+            var proj = tae?.Proj;
+            var destProj = dest?.Proj;
+            if (proj == null || destProj == null || source == null)
+            {
+                r.Problem = "No animation selected.";
+                return r;
+            }
+            SplitAnimID id = default;
+            bool idOk = false;
+            string t = (target ?? "").Trim();
+            if (t.Length == 0)
+                r.Problem = "Enter the new animation ID.";
+            else if (!SplitAnimID.TryParse(destProj, t, out id, out string err))
+            {
+                r.IdStatus = err ?? "not an animation ID";
+                r.IdLevel = 2;
+            }
+            else if (id.CategoryID < 0 || id.CategoryID > 999 || id.SubID < 0 || id.SubID > 999999)
+            {
+                r.IdStatus = "an ID aTTT_AAAAAA is needed for the hkx name";
+                r.IdLevel = 2;
+            }
+            else
+            {
+                var dc = Container(dest);
+                bool entry = destProj.SAFE_GetFirstAnimationFromFullID(id) != null;
+                if (move && dest == tae && id == source.SplitID)
+                    (r.IdStatus, r.IdLevel) = ("the original's own ID", 2);
+                else if (dc != null && dc.AnimExists(id))
+                    (r.IdStatus, r.IdLevel) = ($"{HkxName(id)}.hkx is already loaded: pick another ID", 2);
+                else if (entry && move)
+                    (r.IdStatus, r.IdLevel) = ("taken in the TAE: a move needs a free ID", 2);
+                else if (entry)
+                    (r.IdStatus, r.IdLevel, idOk) = ("an entry has this ID: you'll be asked whether to add a second one", 1, true);
+                else
+                    (r.IdStatus, r.IdLevel, idOk) = ("free", 0, true);
+            }
+            if (r.IdLevel == 2)
+                r.Problem = "New ID: " + r.IdStatus + ".";
+            int? f0 = null, f1 = null;
+            if (r.Problem == null)
+            {
+                if (!ParseFrame(first, "first", out f0, out string ferr) || !ParseFrame(last, "last", out f1, out ferr))
+                    r.Problem = "Frames: " + ferr + ".";
+                else if (f0 != null && f1 != null && f0 >= f1)
+                    r.Problem = "Frames: the first frame must come before the last one.";
+                else if (sourceLast != null && (f0 > sourceLast || f1 > sourceLast))
+                    r.Problem = $"Frames: the source has frames 0-{sourceLast}.";
+            }
+            if (r.Problem == null && move && dest != tae)
+                r.Problem = "A move works within the source's own tab: pick this tab, or copy instead.";
+            if (r.Problem == null && (f0 != null || f1 != null || mirror) && !hctFound)
+            {
+                r.Problem = "A crop or a mirror needs Havok Content Tools " + HkxEdit.HctCompressor.RequiredVersion
+                            + ", which was not found: set its path in Toolbox > [Havok Content Tools], or make a whole copy.";
+                r.ProblemIsHct = true;
+            }
+            if (r.Problem == null && binder == null)
+                r.Problem = "No binder to write into: " + binderError + ".";
+            if (idOk && binder != null)
+            {
+                string what = f0 == null && f1 == null ? "a whole copy" : $"frames {f0 ?? 0}-{f1?.ToString() ?? sourceLast?.ToString() ?? "end"}";
+                if (mirror)
+                    what += ", mirrored";
+                string bn = Path.GetFileName(binder), idName = id.GetFormattedIDString(destProj, null), srcName = source.SplitID.GetFormattedIDString(proj, null);
+                r.Summary = move
+                    ? $"Accept moves {srcName} to {idName}, and the copy ({what}) takes {srcName}. The hkx is written into {bn} at once, not with the project's save."
+                    : $"Accept writes {HkxName(id)}.hkx ({what}) into {bn} at once, not with the project's save, and adds the entry {idName}"
+                      + (dest != tae ? $" to the tab {TabName(dest)}." : ".");
+            }
+            return r;
+        }
 
         static bool ParseFrame(string text, string which, out int? frame, out string error)
         {
@@ -582,24 +689,31 @@ namespace DSAnimStudio.TaeEditor
         }
     }
 
-    // the dialog: the new ID and the frame range, the source, where the hkx goes and whether Havok Content Tools is there
+    // the dialog, in sections: the source; the mode and the new ID (checked as it is typed); the frames (with the playhead) and the
+    // mirror; where it goes (tab and binder); a summary of what Accept will do, written at once and not with the project's save
     sealed class DuplicateCropDialog : Dialog
     {
         readonly TaeEditorScreen tae;
         readonly DSAProj.Animation source;
         string target = "", first = "", last = "", error;
-        bool mirror, move;
-        readonly string sourceText, hctText;
+        bool mirror;
+        int mode;   // 0: copy to a new ID; 1: move the original to the new ID, the copy stays at its ID
+        readonly string sourceText;
+        readonly int? sourceLast;
         readonly bool hctFound;
-        // the tabs the copy can go into, the source's own first
+        readonly string hctWhy;
         readonly List<TaeEditorScreen> tabs = new();
         readonly string[] tabNames;
-        // per tab: the split binders of its mod folder's chr folder (full paths, and names for the list), the folder, or why none
+        // per tab: its split binders (full paths, and names for the list), their folder, or why it has none
         readonly List<string>[] binders;
         readonly string[][] binderNames;
         readonly string[] binderFolders, binderErrors;
         readonly int[] binderPick;
         int tab;
+
+        static readonly Vector4 Green = new Vector4(0.45f, 0.9f, 0.45f, 1f);
+        static readonly Vector4 Amber = new Vector4(1f, 0.75f, 0.3f, 1f);
+        static readonly Vector4 Red = new Vector4(1f, 0.4f, 0.4f, 1f);
 
         public DuplicateCropDialog(TaeEditorScreen tae, DSAProj.Animation source) : base("Duplicate Animation (Crop)")
         {
@@ -612,13 +726,15 @@ namespace DSAnimStudio.TaeEditor
             var proj = tae.Proj;
             var hkx = source.GetHkxID(proj);
             var c = DuplicateCrop.Container(tae);
-            int? lastFrame = DuplicateCrop.SourceLastFrame(c, hkx);
-            sourceText = $"Source: {source.SplitID.GetFormattedIDString(proj, null)}, playing hkx {(hkx.IsValid ? DuplicateCrop.HkxName(hkx) : "none")}"
-                         + (lastFrame != null ? $", frames 0-{lastFrame}" : "");
-            hctText = DuplicateCrop.HctStatus(out hctFound);
+            sourceLast = DuplicateCrop.SourceLastFrame(c, hkx);
+            sourceText = $"{source.SplitID.GetFormattedIDString(proj, null)}, plays {(hkx.IsValid ? DuplicateCrop.HkxName(hkx) : "no hkx")}"
+                         + (sourceLast != null ? $", frames 0-{sourceLast}" : "");
+            hctFound = HkxEdit.HctCompressor.Find(out hctWhy) != null;
+            mirror = DuplicateCrop.LastMirror;
             tabs.Add(tae);
             tabs.AddRange(zzz_DocumentManager.GetOpenFileDocuments().Select(d => d.EditorScreen).Where(s => s != tae));
             tabNames = tabs.Select(s => DuplicateCrop.TabName(s) + (s == tae ? " (this tab)" : "")).ToArray();
+            tab = Math.Max(0, tabs.FindIndex(s => s.ParentDocument == DuplicateCrop.LastTabDocument));
             binders = new List<string>[tabs.Count];
             binderNames = new string[tabs.Count][];
             binderFolders = new string[tabs.Count];
@@ -628,78 +744,140 @@ namespace DSAnimStudio.TaeEditor
             {
                 binders[i] = DuplicateCrop.DestBinders(tabs[i], out binderFolders[i], out binderErrors[i]);
                 binderNames[i] = binders[i].Select(Path.GetFileName).ToArray();
-                // the binder picked last, when this folder has one of that name
-                binderPick[i] = Math.Max(0, Array.FindIndex(binderNames[i], n => n.Equals(DuplicateCrop.LastBinderName, StringComparison.OrdinalIgnoreCase)));
+                binderPick[i] = DuplicateCrop.DefaultBinder(tabs[i], binders[i]);
             }
+        }
+
+        static void Help(string text)
+        {
+            ImGui.SameLine();
+            ImGui.TextDisabled("(?)");
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip(text);
+        }
+
+        void Label(string text, float column)
+        {
+            ImGui.Text(text);
+            ImGui.SameLine();
+            ImGui.SetCursorPosX(column);
+        }
+
+        int? Playhead()
+        {
+            var cursor = tae.Graph?.PlaybackCursor;
+            return cursor == null ? null : (int)Math.Round(cursor.GUICurrentTimeMod * 30.0);
         }
 
         protected override void BuildInsideOfWindow()
         {
+            float column = 80 * Main.DPI;
+            bool move = mode == 1;
+            string binder = binders[tab].Count > 0 ? binders[tab][binderPick[tab]] : null;
+
+            Label("Source", column);
             ImGui.Text(sourceText);
-            ImGui.Text("New animation ID:");
+            ImGui.Separator();
+
+            Label("Mode", column);
+            ImGui.RadioButton("Copy to a new ID", ref mode, 0);
             ImGui.SameLine();
+            ImGui.RadioButton("Move the original to the new ID", ref mode, 1);
+            Help("Copy: the copy gets the new ID and its own hkx; the original stays as it is.\n\n"
+                 + "Move: the original goes to the new ID and the copy takes its place. When the original plays its own hkx and the binder\n"
+                 + "has it, that file is renamed with it and the copy's hkx gets the original's name. Entries importing the original follow it.\n"
+                 + "Within the source's own tab only, to a free ID.");
+            move = mode == 1;
+
+            var look = DuplicateCrop.Look(tae, source, target, first, last, mirror, tabs[tab], move, binder, sourceLast, hctFound,
+                                          binder == null ? binderErrors[tab] : null);
+
+            Label("New ID", column);
             if (IsFirstFrameBuildingWindow)
                 ImGui.SetKeyboardFocusHere();
-            ImGui.PushItemWidth(160);
-            ImGui.InputText("##DuplicateCrop.Target", ref target, 64);
+            ImGui.PushItemWidth(160 * Main.DPI);
+            ImGui.InputTextWithHint("##DuplicateCrop.Target", "aTTT_AAAAAA", ref target, 64);
+            ImGui.PopItemWidth();
+            if (!string.IsNullOrEmpty(look.IdStatus))
+            {
+                ImGui.SameLine();
+                ImGui.TextColored(look.IdLevel == 0 ? Green : look.IdLevel == 1 ? Amber : Red, look.IdStatus);
+            }
+            ImGui.Separator();
+
+            Label("Frames", column);
+            ImGui.Text("First");
+            ImGui.SameLine();
+            ImGui.PushItemWidth(60 * Main.DPI);
+            ImGui.InputTextWithHint("##DuplicateCrop.First", "0", ref first, 8);
+            ImGui.SameLine();
+            if (Tools.SimpleClickButton("Playhead##DuplicateCrop.First", Playhead() != null))
+                first = Playhead()?.ToString() ?? first;
+            ImGui.SameLine();
+            ImGui.Text("   Last");
+            ImGui.SameLine();
+            ImGui.InputTextWithHint("##DuplicateCrop.Last", sourceLast?.ToString() ?? "end", ref last, 8);
             ImGui.PopItemWidth();
             ImGui.SameLine();
-            ImGui.Checkbox("Move the original there (the copy takes its place)", ref move);
-            ImGui.Text("First frame:");
-            ImGui.SameLine();
-            ImGui.PushItemWidth(60);
-            ImGui.InputText("##DuplicateCrop.First", ref first, 8);
-            ImGui.SameLine();
-            ImGui.Text("Last frame:");
-            ImGui.SameLine();
-            ImGui.InputText("##DuplicateCrop.Last", ref last, 8);
-            ImGui.PopItemWidth();
-            ImGui.Text("Frames at 30 fps, as the timeline shows them. Both empty: a whole copy, no crop.");
-            ImGui.Text(move
-                ? "One empty: the source's first / last frame. The original's own hkx is renamed with it; entries importing it follow it."
-                : "One empty: the source's first / last frame. The hkx name is the new ID's.");
-            ImGui.Checkbox("Mirror the hkx (left and right swapped; the events stay as they are)", ref mirror);
-            if (hctFound)
-                ImGui.Text(hctText);
-            else
-                ImGui.TextColored(new Vector4(1f, 0.75f, 0.3f, 1f), hctText);
+            if (Tools.SimpleClickButton("Playhead##DuplicateCrop.Last", Playhead() != null))
+                last = Playhead()?.ToString() ?? last;
+            Help("Frames at 30 fps, as the timeline shows them; 'Playhead' takes the timeline's current frame.\n"
+                 + "Both empty: a whole copy, no crop. One empty: the source's first or last frame.\n\n"
+                 + "The events are cropped with the frames: an event wholly outside the range is dropped, one running over the\n"
+                 + "first frame starts at 0, one running past the last frame keeps its end, and all move back by the first frame.");
+
+            Label("Mirror", column);
+            ImGui.Checkbox("Swap left and right##DuplicateCrop.Mirror", ref mirror);
+            Help("The hkx mirrored after the crop: each bone takes its left / right twin's pose, the root motion's sideways\n"
+                 + "drift and turn flip. The events stay as they are (an effect on the right hand stays on the right hand).");
+            ImGui.Separator();
+
             if (tabs.Count > 1)
             {
-                ImGui.Text("Copy into the tab:");
-                ImGui.SameLine();
-                ImGui.PushItemWidth(360);
+                Label("Tab", column);
+                ImGui.PushItemWidth(420 * Main.DPI);
                 ImGui.Combo("##DuplicateCrop.Tab", ref tab, tabNames, tabNames.Length);
                 ImGui.PopItemWidth();
+                Help("The open tab the copy goes into: its TAE gets the entry, its mod folder's binder the hkx.");
             }
+            Label("Binder", column);
             if (binders[tab].Count > 0)
             {
-                ImGui.Text("Write the hkx into:");
-                ImGui.SameLine();
-                ImGui.PushItemWidth(260);
+                ImGui.PushItemWidth(260 * Main.DPI);
                 ImGui.Combo("##DuplicateCrop.Binder", ref binderPick[tab], binderNames[tab], binderNames[tab].Length);
                 ImGui.PopItemWidth();
-                ImGui.Text($"in {binderFolders[tab]} (written at once, not with the project's save)");
+                Help($"The split animation binder the new hkx is written into, in\n{binderFolders[tab]}");
             }
             else
             {
-                ImGui.TextColored(new Vector4(1f, 0.75f, 0.3f, 1f), $"No binder for the new hkx in this tab: {binderErrors[tab]}");
+                ImGui.TextColored(Amber, binderErrors[tab]);
             }
+            ImGui.Separator();
+
+            // what Accept will do, and why it can't yet
+            if (look.Summary != null)
+                ImGui.TextWrapped(look.Summary);
+            if (look.Problem != null)
+                ImGui.TextColored(look.ProblemIsHct ? Amber : Red, look.Problem);
             if (error != null)
-                ImGui.TextColored(new Vector4(1f, 0.35f, 0.35f, 1f), "Error: " + error);
+                ImGui.TextColored(Red, "Error: " + error);
             ImGui.Text(" ");
+
             if (Tools.SimpleClickButton("Cancel") || IsTitleBarXRequested || IsEscapeKeyRequested)
             {
                 Dismiss();
                 return;
             }
             ImGui.SameLine();
-            if (Tools.SimpleClickButton("Accept") || IsEnterKeyRequested)
+            bool ready = look.Problem == null;
+            if (Tools.SimpleClickButton("Accept", ready) || (ready && IsEnterKeyRequested))
             {
-                string binder = binders[tab].Count > 0 ? binders[tab][binderPick[tab]] : null;
                 error = DuplicateCrop.Check(tae, source, target, first, last, out var req, mirror, tabs[tab], move, binder);
                 if (error == null)
                 {
                     DuplicateCrop.LastBinderName = Path.GetFileName(binder);
+                    DuplicateCrop.LastMirror = mirror;
+                    DuplicateCrop.LastTabDocument = tabs[tab].ParentDocument;
                     Dismiss();
                     DuplicateCrop.Start(req, new DuplicateCropUi());
                 }
