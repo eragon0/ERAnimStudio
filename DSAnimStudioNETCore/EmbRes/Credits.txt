@@ -1,5 +1,5 @@
-ER ANIM STUDIO © 2026 Eragon, an Elden Ring fork of DS ANIM STUDIO (GPL-3.0)
 DS ANIM STUDIO © 2018-2026 Meowmaritus
+ER ANIM STUDIO © 2026 Eragon, an Elden Ring fork of DS ANIM STUDIO (GPL-3.0)
 SoulsAssetPipeline © 2020-2026 Meowmaritus
 
 ===============================================================================================================================
