@@ -40,7 +40,7 @@ namespace DSAnimStudio.ImguiOSD
                 ImGui.SetWindowSize(thisDialogSize.ToCS());
 
                 ImGui.TextWrapped(
-                    "Welcome to DS Anim Studio v5.0.\n\n" +
+                    "Welcome to ER Anim Studio, an Elden Ring fork of DS Anim Studio v5.0.\n\n" +
                     "In this version the UI layout is a lot different.\n\n" +
                     "Try it out, but if you hate it, check out the very first\n" +
                     "option in the Toolbox panel (Window->Toolbox).\n\n" +

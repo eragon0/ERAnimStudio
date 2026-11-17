@@ -25,7 +25,7 @@ namespace DSAnimStudio.TaeEditor
                 if ((flags & EditorFlags.NeedsResave_LegacySaveWithEventGroupsStripped) != 0)
                     sb.AppendLine($"    -It has animation entries which were mistakenly saved with event groups enabled in a game that doesn't support them.");
                 if ((flags & EditorFlags.NeedsResave_DSAProjVersionOutdated) != 0)
-                    sb.AppendLine($"    -The *{DSAProj.EXT} file was saved with an older version of DS Anim Studio.");
+                    sb.AppendLine($"    -The *{DSAProj.EXT} file was saved with an older version of ER Anim Studio.");
                 if ((flags & EditorFlags.NeedsResave_NullAnimNameBug) != 0)
                     sb.AppendLine($"    -The *{DSAProj.EXT} file was saved with a bug that caused all anim file names " +
                                   $"to get wiped (anim file names have been loaded from the *.dsasbak file for any null file names).");
@@ -542,7 +542,7 @@ namespace DSAnimStudio.TaeEditor
                         }
                         catch (DSAProjTooNewException)
                         {
-                            var choice = MessageBox.Show($"Associated *{DSAProj.EXT} file was saved with a newer version of DS Anim Studio. Cannot open.\n\n" +
+                            var choice = MessageBox.Show($"Associated *{DSAProj.EXT} file was saved with a newer version of ER Anim Studio. Cannot open.\n\n" +
                                 "Resetting everything to default.\nWARNING: >>>If you save, it will overwrite the incompatible file.<<<",
                                 $"Invalid Metadata (*{DSAProj.EXT}) File", MessageBoxButtons.OK, MessageBoxIcon.Warning);
 

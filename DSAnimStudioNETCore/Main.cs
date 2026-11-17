@@ -183,7 +183,7 @@ namespace DSAnimStudio
                 return true;
 
             System.Windows.Forms.MessageBox.Show("To load Sekiro / Elden Ring / Armored Core 6 / Elden Ring Nightreign files, " +
-                            "you need to give DS Anim Studio access to the 'oo2core_6_win64.dll', 'oo2core_8_win64.dll', or 'oo2core_9_win64.dll' file " +
+                            "you need to give ER Anim Studio access to the 'oo2core_6_win64.dll', 'oo2core_8_win64.dll', or 'oo2core_9_win64.dll' file " +
                             "bundled next to the EXE of one of those games. Click OK to browse to this file for the current game now.", 
                             "Action Needed", MessageBoxButtons.OK, MessageBoxIcon.Asterisk);
 
@@ -828,7 +828,7 @@ namespace DSAnimStudio
                     {
                         var ask = System.Windows.Forms.MessageBox.Show($"Failed 10 times in a row to read configuration file '{ConfigFileShortName}' from the application folder. " +
                             "It may have been in use by another " +
-                            "application (e.g. another instance of DS Anim Studio). " +
+                            "application (e.g. another instance of ER Anim Studio). " +
                             "\n\nWould you like to RETRY the configuration file reading operation or CANCEL, " +
                             "disabling configuration file autosaving to be safe?", "Configuration File IO Failure",
                             MessageBoxButtons.RetryCancel, MessageBoxIcon.Warning);
@@ -941,7 +941,7 @@ namespace DSAnimStudio
                         {
                             var ask = System.Windows.Forms.MessageBox.Show($"Failed 10 times in a row to write configuration file '{ConfigFileShortName}' in the application folder. " +
                                 "It may have been in use by another " +
-                                "application (e.g. another instance of DS Anim Studio). " +
+                                "application (e.g. another instance of ER Anim Studio). " +
                                 "\n\nWould you like to RETRY the configuration file writing operation or CANCEL, " +
                                 "disabling configuration file autosaving to be safe?", "Configuration File IO Failure",
                                 MessageBoxButtons.RetryCancel, MessageBoxIcon.Warning);
@@ -1540,7 +1540,7 @@ namespace DSAnimStudio
             catch (Exception ex) when (Main.EnableErrorHandler.MainInit)
             {
                 System.Windows.Forms.MessageBox.Show(
-                    $"Error occurred while initializing DS Anim Studio (please report):\n\n{ex.ToString()}", 
+                    $"Error occurred while initializing ER Anim Studio (please report):\n\n{ex.ToString()}", 
                     "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
             
@@ -2127,13 +2127,13 @@ namespace DSAnimStudio
 
                 UpdateTime(gameTime.ElapsedGameTime);
 
-                var newTitle = $"DS ANIM STUDIO {DSAS_VERSION_STRING}";
+                var newTitle = $"ER ANIM STUDIO {DSAS_VERSION_STRING}";
 
                 if (!string.IsNullOrWhiteSpace(TAE_EDITOR?.NewFileContainerName))
                     newTitle = $"{System.IO.Path.GetFileName(TAE_EDITOR.NewFileContainerName)}" +
                         $"{(TAE_EDITOR.IsModified ? "*" : "")}" +
                         $"{(TAE_EDITOR.IsReadOnlyFileMode ? " !READ ONLY!" : "")}" +
-                        $" - DS ANIM STUDIO {DSAS_VERSION_STRING}";
+                        $" - ER ANIM STUDIO {DSAS_VERSION_STRING}";
 
                 if (IsPatreonBuild)
                     newTitle += " [PATREON EXLUSIVE VER, DO NOT REDISTRIBUTE]";

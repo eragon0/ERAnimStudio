@@ -16,7 +16,11 @@ namespace DSAnimStudio.ImguiOSD
             public override SaveOpenStateTypes GetSaveOpenStateType() => SaveOpenStateTypes.SaveAlways;
 
             public override string NewImguiWindowTitle => "Toolbox";
-            
+
+            // ERAnimStudio: the Havok Content Tools line, checked again only when the path changes
+            string hctStatusFor, hctStatus;
+            bool hctStatusOk;
+
             protected override void Init()
             {
                 
@@ -571,6 +575,43 @@ namespace DSAnimStudio.ImguiOSD
                     }
 
 
+                    ImGui.TreePop();
+                }
+
+                ImGui.Separator();
+
+                // ERAnimStudio: Havok Content Tools 2018.1, for Duplicate Animation (Crop)'s crops and mirrors
+                if (OSD.RequestExpandAllTreeNodes)
+                    ImGui.SetNextItemOpen(true);
+
+                if (ImGui.TreeNode("[Havok Content Tools]"))
+                {
+                    ImGui.TextWrapped("hctStandAloneFilterManager.exe of Havok Content Tools " + HkxEdit.HctCompressor.RequiredVersion
+                        + ": crops and mirrors in Duplicate Animation (Crop) need it. Found on launch when this is empty.");
+                    string path = HkxEdit.HctCompressor.ManualPath ?? "";
+                    ImGui.PushItemWidth(-1);
+                    if (ImGui.InputText("##HavokContentToolsPath", ref path, 1024))
+                        HkxEdit.HctCompressor.ManualPath = path;
+                    anyFieldFocused |= ImGui.IsItemActive();
+                    ImGui.PopItemWidth();
+                    if (Tools.SimpleClickButton("Look for it"))
+                    {
+                        HkxEdit.HctCompressor.ManualPath = "";
+                        HkxEdit.HctCompressor.ManualPath = HkxEdit.HctCompressor.Find(out _)?.Path ?? "";
+                    }
+                    if (hctStatusFor != HkxEdit.HctCompressor.ManualPath)
+                    {
+                        hctStatusFor = HkxEdit.HctCompressor.ManualPath;
+                        var found = HkxEdit.HctCompressor.Find(out string why);
+                        hctStatusOk = found != null && found.Source == "the settings";
+                        hctStatus = found == null ? why
+                            : hctStatusOk ? $"Version {found.Version}: crops and mirrors are available."
+                            : $"This path can't be used; {found.Version} is used from {found.Source}: {found.Path}";
+                    }
+                    if (hctStatusOk)
+                        ImGui.TextWrapped(hctStatus);
+                    else
+                        ImGui.TextColored(new System.Numerics.Vector4(1f, 0.75f, 0.3f, 1f), hctStatus);
                     ImGui.TreePop();
                 }
 

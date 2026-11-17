@@ -213,9 +213,15 @@ namespace DSAnimStudio.TaeEditor
                         Note($"  selected {sel?.SplitID.GetFormattedIDString(tae.Proj, null)}; playing hkx {DuplicateCrop.Container(tae)?.CurrentAnimationID.GetFormattedIDString(tae.Proj, null)}");
                         if (dest != tae)
                             Note($"  into the tab '{DuplicateCrop.TabName(dest)}'");
+                        // the case's binder ('binder', a file name; the spec's, else the first the dialog would list)
+                        string binderName = Str(c, "binder") ?? Str(spec, "binder");
+                        var binders = DuplicateCrop.DestBinders(dest, out _, out _);
+                        string binder = binderName == null ? null
+                            : binders.FirstOrDefault(b => Path.GetFileName(b).Equals(binderName, StringComparison.OrdinalIgnoreCase)) ?? binderName;
+                        Note($"  binders offered: {string.Join(", ", binders.Select(Path.GetFileName))}; writing into {Path.GetFileName(binder ?? "(the first)")}");
                         string err = DuplicateCrop.Check(tae, sel, Str(c, "target"), Str(c, "first"), Str(c, "last"), out var req,
                                                          c.TryGetProperty("mirror", out var mv) && mv.GetBoolean(), dest,
-                                                         c.TryGetProperty("move", out var mo) && mo.GetBoolean());
+                                                         c.TryGetProperty("move", out var mo) && mo.GetBoolean(), binder);
                         if (err != null)
                         {
                             Note("  refused by the check: " + err);

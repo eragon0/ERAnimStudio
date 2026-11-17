@@ -3,8 +3,9 @@
 //   - Frames are the editor's, 30 a second, as the timeline shows them. No first and no last frame: no crop, a copy of the entry and
 //     of its hkx at the new ID. A first and / or a last frame (a missing one is the source's first / last): the hkx is cut to those
 //     frames and the events with it.
-//   - The hkx: aTTT_AAAAAA.hkx for the new ID, written at once into the project's chr\c0000_a8x.anibnd.dcx (a split animation binder
-//     in its mod folder). A whole copy is the source's bytes; a crop or a mirror is decoded, edited, written uncompressed and
+//   - Elden Ring projects only: the hkx it writes are Havok 2018.1, Elden Ring's.
+//   - The hkx: aTTT_AAAAAA.hkx for the new ID, written at once into the split animation binder picked in the dialog (the character's
+//     cNNNN_*.anibnd.dcx in the chr folder of the tab's mod folder; the last one picked is offered first). A whole copy is the source's bytes; a crop or a mirror is decoded, edited, written uncompressed and
 //     spline-compressed by Havok Content Tools 2018.1 (HkxEdit), read back and compared. Without Havok Content Tools a crop or a
 //     mirror refuses to start. The name already in any binder the editor loaded is an error: nothing is done.
 //   - The TAE entry: made as 'Duplicate Animation' makes it (ImmediateImportAnim: the source's events and tracks, the reference chain
@@ -54,7 +55,6 @@ namespace DSAnimStudio.TaeEditor
     {
         public const string MenuText = "Duplicate Animation (Crop)...";
         public const string Shortcut = "Ctrl+Insert";
-        public const string BinderName = "c0000_a8x.anibnd.dcx";
         const double Fps = HkxEditPipeline.EditorFps;
         const double Eps = 0.0005;          // seconds: well under a frame
         static volatile bool busy;
@@ -84,7 +84,7 @@ namespace DSAnimStudio.TaeEditor
         }
 
         public static bool Enabled(TaeEditorScreen tae) =>
-            tae != null && tae.IsFileOpen && tae.SelectedAnim != null && !tae.SelectedAnim.IS_DUMMY_ANIM && !busy;
+            tae != null && tae.IsFileOpen && tae.SelectedAnim != null && !tae.SelectedAnim.IS_DUMMY_ANIM && !busy && IsEldenRing(tae);
 
         public static void ShowDialog(TaeEditorScreen tae)
         {
@@ -101,48 +101,55 @@ namespace DSAnimStudio.TaeEditor
         public static NewAnimationContainer Container(TaeEditorScreen tae) =>
             tae?.Graph?.ViewportInteractor?.CurrentModel?.AnimContainer ?? tae?.ParentDocument?.Scene?.MainModel?.AnimContainer;
 
-        static bool Inside(string path, string folder)
+        /// <summary>Crops, mirrors and the hkx they write are Elden Ring's (Havok 2018.1): the feature works on Elden Ring projects only.</summary>
+        public static bool IsEldenRing(TaeEditorScreen tae) =>
+            tae?.ParentDocument?.GameRoot?.GameType == SoulsAssetPipeline.SoulsGames.ER;
+
+        // the character the tab's anibnd belongs to (c0000 for c0000.anibnd.dcx), null for another file
+        static string Character(TaeEditorScreen tae)
         {
-            string p = Path.GetFullPath(path).TrimEnd('\\'), f = Path.GetFullPath(folder).TrimEnd('\\');
-            return p.Equals(f, StringComparison.OrdinalIgnoreCase) || p.StartsWith(f + "\\", StringComparison.OrdinalIgnoreCase);
+            var m = System.Text.RegularExpressions.Regex.Match(Path.GetFileName(tae?.NewFileContainerName ?? ""), @"^(c\d{4})\.anibnd\.dcx$",
+                                                               System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            return m.Success ? m.Groups[1].Value.ToLowerInvariant() : null;
         }
 
-        // the project's chr\c0000_a8x.anibnd.dcx in its mod folder; never one in the game folder
-        public static string DestBinder(TaeEditorScreen tae, out string error)
+        /// <summary>
+        /// The split animation binders the tab's new hkx can go into: the character's cNNNN_*.anibnd.dcx in the chr folder of the tab's
+        /// mod folder (the ModEngine directory of its workspace).
+        /// </summary>
+        public static List<string> DestBinders(TaeEditorScreen tae, out string folder, out string error)
         {
             error = null;
-            var data = tae.ParentDocument?.GameData;
-            string opened = tae.NewFileContainerName;
-            if (opened == null || !Path.GetFileName(opened).StartsWith("c0000.", StringComparison.OrdinalIgnoreCase))
+            folder = null;
+            if (!IsEldenRing(tae))
             {
-                error = $"only the player's c0000.anibnd.dcx: its hkx go into {BinderName} (this file: {Path.GetFileName(opened ?? "none")})";
-                return null;
+                error = "Elden Ring projects only (the hkx this writes are Elden Ring's)";
+                return new List<string>();
+            }
+            var data = tae.ParentDocument?.GameData;
+            string chr = Character(tae);
+            if (chr == null)
+            {
+                error = $"only a character's anibnd (cNNNN.anibnd.dcx): its hkx go into the character's split binders (this file: {Path.GetFileName(tae.NewFileContainerName ?? "none")})";
+                return new List<string>();
             }
             string mod = data?.ModengineRootPath;
             if (string.IsNullOrWhiteSpace(mod))
             {
                 error = "the project has no mod folder (ModEngine directory), so the new hkx has no binder to go into";
-                return null;
+                return new List<string>();
             }
-            string p = Path.GetFullPath(Path.Combine(mod, "chr", BinderName));
-            if (!File.Exists(p))
-            {
-                error = $"no {BinderName} in the project's mod folder ({Path.Combine(mod, "chr")})";
-                return null;
-            }
-            string game = data.InterrootPath;
-            if (!string.IsNullOrWhiteSpace(game) && Inside(p, game))
-            {
-                error = $"{p} is in the game folder: never written";
-                return null;
-            }
-            if (p.Split('\\').Any(s => s.Equals("Elden Ring Reforged", StringComparison.OrdinalIgnoreCase)))
-            {
-                error = $"{p} is in the live installation: never written";
-                return null;
-            }
-            return p;
+            folder = Path.GetFullPath(Path.Combine(mod, "chr"));
+            var list = Directory.Exists(folder)
+                ? Directory.GetFiles(folder, chr + "_*.anibnd.dcx").Select(Path.GetFullPath).OrderBy(p => p, StringComparer.OrdinalIgnoreCase).ToList()
+                : new List<string>();
+            if (list.Count == 0)
+                error = $"no split animation binder ({chr}_*.anibnd.dcx) in {folder}";
+            return list;
         }
+
+        // the binder picked last, offered first the next time
+        public static string LastBinderName;
 
         static bool ParseFrame(string text, string which, out int? frame, out string error)
         {
@@ -188,7 +195,7 @@ namespace DSAnimStudio.TaeEditor
 
         // the checks before anything is written; null when the request can go ahead
         public static string Check(TaeEditorScreen tae, DSAProj.Animation source, string target, string first, string last, out Request req,
-                                   bool mirror = false, TaeEditorScreen dest = null, bool move = false)
+                                   bool mirror = false, TaeEditorScreen dest = null, bool move = false, string binder = null)
         {
             req = null;
             dest ??= tae;
@@ -196,6 +203,8 @@ namespace DSAnimStudio.TaeEditor
             var destProj = dest?.Proj;
             if (proj == null || source == null)
                 return "no animation selected";
+            if (!IsEldenRing(tae) || !IsEldenRing(dest))
+                return "Elden Ring projects only (the hkx this writes are Elden Ring's)";
             if (destProj == null || !dest.IsFileOpen)
                 return "the tab to copy into has no file open";
             if (busy)
@@ -244,9 +253,12 @@ namespace DSAnimStudio.TaeEditor
                 return "the tab to copy into has no model loaded";
             if (dc.AnimExists(id))
                 return $"{HkxName(id)}.hkx is already in a binder the editor loaded: pick another ID";
-            string binder = DestBinder(dest, out err);
-            if (binder == null)
+            var binders = DestBinders(dest, out _, out err);
+            if (binders.Count == 0)
                 return err;
+            binder ??= binders[0];
+            if (!binders.Contains(binder, StringComparer.OrdinalIgnoreCase))
+                return $"{binder} is not one of the tab's split animation binders";
             if (move)
             {
                 if (dest != tae)
@@ -581,7 +593,12 @@ namespace DSAnimStudio.TaeEditor
         readonly bool hctFound;
         // the tabs the copy can go into, the source's own first
         readonly List<TaeEditorScreen> tabs = new();
-        readonly string[] tabNames, binderTexts;
+        readonly string[] tabNames;
+        // per tab: the split binders of its mod folder's chr folder (full paths, and names for the list), the folder, or why none
+        readonly List<string>[] binders;
+        readonly string[][] binderNames;
+        readonly string[] binderFolders, binderErrors;
+        readonly int[] binderPick;
         int tab;
 
         public DuplicateCropDialog(TaeEditorScreen tae, DSAProj.Animation source) : base("Duplicate Animation (Crop)")
@@ -602,11 +619,18 @@ namespace DSAnimStudio.TaeEditor
             tabs.Add(tae);
             tabs.AddRange(zzz_DocumentManager.GetOpenFileDocuments().Select(d => d.EditorScreen).Where(s => s != tae));
             tabNames = tabs.Select(s => DuplicateCrop.TabName(s) + (s == tae ? " (this tab)" : "")).ToArray();
-            binderTexts = tabs.Select(s =>
+            binders = new List<string>[tabs.Count];
+            binderNames = new string[tabs.Count][];
+            binderFolders = new string[tabs.Count];
+            binderErrors = new string[tabs.Count];
+            binderPick = new int[tabs.Count];
+            for (int i = 0; i < tabs.Count; i++)
             {
-                string b = DuplicateCrop.DestBinder(s, out string err);
-                return b != null ? $"The new hkx is written now into {b}" : $"No binder for the new hkx in this tab: {err}";
-            }).ToArray();
+                binders[i] = DuplicateCrop.DestBinders(tabs[i], out binderFolders[i], out binderErrors[i]);
+                binderNames[i] = binders[i].Select(Path.GetFileName).ToArray();
+                // the binder picked last, when this folder has one of that name
+                binderPick[i] = Math.Max(0, Array.FindIndex(binderNames[i], n => n.Equals(DuplicateCrop.LastBinderName, StringComparison.OrdinalIgnoreCase)));
+            }
         }
 
         protected override void BuildInsideOfWindow()
@@ -647,7 +671,19 @@ namespace DSAnimStudio.TaeEditor
                 ImGui.Combo("##DuplicateCrop.Tab", ref tab, tabNames, tabNames.Length);
                 ImGui.PopItemWidth();
             }
-            ImGui.Text(binderTexts[tab]);
+            if (binders[tab].Count > 0)
+            {
+                ImGui.Text("Write the hkx into:");
+                ImGui.SameLine();
+                ImGui.PushItemWidth(260);
+                ImGui.Combo("##DuplicateCrop.Binder", ref binderPick[tab], binderNames[tab], binderNames[tab].Length);
+                ImGui.PopItemWidth();
+                ImGui.Text($"in {binderFolders[tab]} (written at once, not with the project's save)");
+            }
+            else
+            {
+                ImGui.TextColored(new Vector4(1f, 0.75f, 0.3f, 1f), $"No binder for the new hkx in this tab: {binderErrors[tab]}");
+            }
             if (error != null)
                 ImGui.TextColored(new Vector4(1f, 0.35f, 0.35f, 1f), "Error: " + error);
             ImGui.Text(" ");
@@ -659,9 +695,11 @@ namespace DSAnimStudio.TaeEditor
             ImGui.SameLine();
             if (Tools.SimpleClickButton("Accept") || IsEnterKeyRequested)
             {
-                error = DuplicateCrop.Check(tae, source, target, first, last, out var req, mirror, tabs[tab], move);
+                string binder = binders[tab].Count > 0 ? binders[tab][binderPick[tab]] : null;
+                error = DuplicateCrop.Check(tae, source, target, first, last, out var req, mirror, tabs[tab], move, binder);
                 if (error == null)
                 {
+                    DuplicateCrop.LastBinderName = Path.GetFileName(binder);
                     Dismiss();
                     DuplicateCrop.Start(req, new DuplicateCropUi());
                 }

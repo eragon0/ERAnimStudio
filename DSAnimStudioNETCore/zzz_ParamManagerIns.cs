@@ -695,7 +695,7 @@ namespace DSAnimStudio
                     + "\n" + $""
                     + "\n" + $"    2) (for Regulation) the editor you're using is saving in 'DCX.DFLT' format."
                     + "\n" + $""
-                    + "\n" + $"    3) (for Regulation) The regulation key file for this game in DS Anim Studio's '/res/RegulationKeys/' folder hasn't been tampered with."
+                    + "\n" + $"    3) (for Regulation) The regulation key file for this game in ER Anim Studio's '/res/RegulationKeys/' folder hasn't been tampered with."
                     + "\n" + $""
                     + "\n" + $""
                     + "\n" + $"!! MANY ELEMENTS OF THIS APP DO NOT FUNCTION WITH GAMEPARAM MISSING !!"

@@ -246,6 +246,12 @@ namespace DSAnimStudio.TaeEditor
         public bool LimitFPSWhenWindowUnfocused = true;
         public bool StopUpdatingWhenWindowUnfocused = true;
 
+        // ERAnimStudio: Havok Content Tools 2018.1's hctStandAloneFilterManager.exe, for Duplicate Animation (Crop)'s crops and mirrors;
+        // filled on launch when empty (HctCompressor.Find: environment variable, registry, default folder)
+        public string HavokContentToolsPath = "";
+        // ERAnimStudio: the split binder Duplicate Animation (Crop) wrote into last, offered first
+        public string DuplicateCropLastBinder = "";
+
         public SapImportConfigs.ImportConfigFlver2 LastUsedImportConfig_FLVER2 
             = new SapImportConfigs.ImportConfigFlver2();
 
@@ -345,6 +351,9 @@ namespace DSAnimStudio.TaeEditor
 
             LimitFPSWhenWindowUnfocused = GFX.Display.LimitFPSWhenWindowUnfocused;
             StopUpdatingWhenWindowUnfocused = GFX.Display.StopUpdatingWhenWindowUnfocused;
+
+            HavokContentToolsPath = HkxEdit.HctCompressor.ManualPath ?? "";
+            DuplicateCropLastBinder = DuplicateCrop.LastBinderName ?? "";
 
             Colors = Main.Colors;
             Colors.WriteColorsToConfig();
@@ -473,6 +482,16 @@ namespace DSAnimStudio.TaeEditor
             GFX.Display.AverageFPSSampleSize = AverageFPSSampleSize;
             GFX.Display.LimitFPSWhenWindowUnfocused = LimitFPSWhenWindowUnfocused;
             GFX.Display.StopUpdatingWhenWindowUnfocused = StopUpdatingWhenWindowUnfocused;
+
+            // ERAnimStudio: Havok Content Tools' path, looked for when empty (and kept when found)
+            HkxEdit.HctCompressor.ManualPath = HavokContentToolsPath ?? "";
+            if (string.IsNullOrWhiteSpace(HkxEdit.HctCompressor.ManualPath))
+            {
+                var found = HkxEdit.HctCompressor.Find(out _);
+                if (found != null)
+                    HkxEdit.HctCompressor.ManualPath = HavokContentToolsPath = found.Path;
+            }
+            DuplicateCrop.LastBinderName = string.IsNullOrWhiteSpace(DuplicateCropLastBinder) ? null : DuplicateCropLastBinder;
             GFX.Display.Vsync = !EnableVSync;
             GFX.Display.Apply();
             GFX.Display.Vsync = EnableVSync;

@@ -58,7 +58,7 @@ namespace DSAnimStudio
             catch (Exception ex)
             {
                 MessageBox.Show(
-                    $"Error occurred before DS Anim Studio had a chance to initialize (please report):\n\n{ex.ToString()}",
+                    $"Error occurred before ER Anim Studio had a chance to initialize (please report):\n\n{ex.ToString()}",
                     "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
 #endif

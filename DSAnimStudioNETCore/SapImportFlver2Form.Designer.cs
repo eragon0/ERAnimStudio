@@ -51,7 +51,7 @@
             this.buttonImport.Name = "buttonImport";
             this.buttonImport.Size = new System.Drawing.Size(123, 42);
             this.buttonImport.TabIndex = 0;
-            this.buttonImport.Text = "IMPORT FBX TO DS ANIM STUDIO";
+            this.buttonImport.Text = "IMPORT FBX TO ER ANIM STUDIO";
             this.buttonImport.UseVisualStyleBackColor = true;
             this.buttonImport.Click += new System.EventHandler(this.buttonImport_Click);
             this.buttonImport.DragEnter += new System.Windows.Forms.DragEventHandler(this.buttonImport_DragEnter);

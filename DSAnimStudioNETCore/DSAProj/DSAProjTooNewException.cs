@@ -9,7 +9,7 @@ namespace DSAnimStudio
     internal class DSAProjTooNewException : Exception
     {
         public DSAProjTooNewException(DSAProj.Versions maxSupportedVersion, DSAProj.Versions fileVersion) 
-            : base($"*{DSAProj.EXT} file format version is {fileVersion}, which is higher than what this version of DS Anim Studio supports ({maxSupportedVersion}).")
+            : base($"*{DSAProj.EXT} file format version is {fileVersion}, which is higher than what this version of ER Anim Studio supports ({maxSupportedVersion}).")
         { 
 
         }

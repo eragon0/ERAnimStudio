@@ -160,14 +160,14 @@ namespace DSAnimStudio.TaeEditor
 
         private void buttonHelpLoadLooseParams_Click(object sender, EventArgs e)
         {
-            System.Windows.Forms.MessageBox.Show("If checked, DS Anim Studio will load parameters from loose GameParam file " +
+            System.Windows.Forms.MessageBox.Show("If checked, ER Anim Studio will load parameters from loose GameParam file " +
                 "rather than from encrypted regulation. Works exactly like the ModEngine setting \"loadLooseParams\".",
                 "Explanation", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
 
         private void buttonHelpLoadUxmFiles_Click(object sender, EventArgs e)
         {
-            System.Windows.Forms.MessageBox.Show("If checked, DS Anim Studio will load loose files unpacked with UXM instead of the ones in the data archives. " +
+            System.Windows.Forms.MessageBox.Show("If checked, ER Anim Studio will load loose files unpacked with UXM instead of the ones in the data archives. " +
                 "\nWorks exactly like the ModEngine setting \"loadUXMFiles\"." +
                 "\nHas no effect on games that do not have archive files (DeS, DS1:PTDE, BB)",
                 "Explanation", MessageBoxButtons.OK, MessageBoxIcon.Information);
@@ -176,7 +176,7 @@ namespace DSAnimStudio.TaeEditor
         private void noPaddingButtonHelpModEngindDir_Click(object sender, EventArgs e)
         {
             System.Windows.Forms.MessageBox.Show("If a path is entered here, it will function exactly like the mod " +
-                "override directory in ModEngine, making DS Anim Studio load files from there with first priority, " +
+                "override directory in ModEngine, making ER Anim Studio load files from there with first priority, " +
                 "only falling back to loading from the regular game directory if the file isn't found in the " +
                 "ModEngine directory.",
                 "Explanation", MessageBoxButtons.OK, MessageBoxIcon.Information);

@@ -57,7 +57,7 @@ namespace DSAnimStudio.SafeFmod
                         "Make sure you have an audio device connected and working and " +
                         "that no other app is taking exclusive control of the device.\n\n" +
                         "Once you free the device, go to the 'Sound' window and check 'Enable Audio System'\n" +
-                        "or restart DS Anim Studio for Wwise games (Elden Ring and later)");
+                        "or restart ER Anim Studio for Wwise games (Elden Ring and later)");
                     zzz_SoundManagerIns.SOUND_DISABLED = true;
                     eventSystemHasBeenInitialized = false;
                 }

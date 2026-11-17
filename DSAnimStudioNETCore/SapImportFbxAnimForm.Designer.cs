@@ -228,10 +228,10 @@
             // 
             this.fbxAnim_RotationQuantizationType.FormattingEnabled = true;
             this.fbxAnim_RotationQuantizationType.Items.AddRange(new object[] {
-            "POLAR32 (DS Anim Studio cannot load)",
+            "POLAR32 (ER Anim Studio cannot load)",
             "THREECOMP40 (Recommended)",
             "THREECOMP48",
-            "THREECOMP24 (DS Anim Studio cannot load)",
+            "THREECOMP24 (ER Anim Studio cannot load)",
             "STRAIGHT16",
             "UNCOMPRESSED"});
             this.fbxAnim_RotationQuantizationType.Location = new System.Drawing.Point(297, 85);
