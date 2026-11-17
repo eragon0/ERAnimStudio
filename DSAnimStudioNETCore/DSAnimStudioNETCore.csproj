@@ -384,7 +384,7 @@
     <None Update="LICENSE\Dear ImGui License.txt">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Update="LICENSE\DS ANIM STUDIO LICENSE.txt">
+    <None Update="LICENSE\ER ANIM STUDIO LICENSE.txt">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
     <None Update="LICENSE\Havoc License.txt">

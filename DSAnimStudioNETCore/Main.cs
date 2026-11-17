@@ -28,6 +28,8 @@ namespace DSAnimStudio
     {
         // STOP MOVING THESE FIELDS DOWN LMAO
         public const string DSAS_VERSION_STRING = "5.0-RC6.1";
+        // ERAnimStudio: the fork's version, the DS Anim Studio release it is built on plus its own count
+        public const string ERAS_VERSION_STRING = DSAS_VERSION_STRING + "-er.1";
         public static bool IsPatreonBuild => false;
 
 
@@ -2127,13 +2129,13 @@ namespace DSAnimStudio
 
                 UpdateTime(gameTime.ElapsedGameTime);
 
-                var newTitle = $"ER ANIM STUDIO {DSAS_VERSION_STRING}";
+                var newTitle = $"ER ANIM STUDIO {ERAS_VERSION_STRING}";
 
                 if (!string.IsNullOrWhiteSpace(TAE_EDITOR?.NewFileContainerName))
                     newTitle = $"{System.IO.Path.GetFileName(TAE_EDITOR.NewFileContainerName)}" +
                         $"{(TAE_EDITOR.IsModified ? "*" : "")}" +
                         $"{(TAE_EDITOR.IsReadOnlyFileMode ? " !READ ONLY!" : "")}" +
-                        $" - ER ANIM STUDIO {DSAS_VERSION_STRING}";
+                        $" - ER ANIM STUDIO {ERAS_VERSION_STRING}";
 
                 if (IsPatreonBuild)
                     newTitle += " [PATREON EXLUSIVE VER, DO NOT REDISTRIBUTE]";
