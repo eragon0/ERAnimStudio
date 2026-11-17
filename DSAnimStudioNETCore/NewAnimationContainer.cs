@@ -495,7 +495,7 @@ namespace DSAnimStudio
         }
 
         /// <summary>
-        /// ERAnimStudio: after a move with a file swap (Duplicate Animation (Crop), 'Move the original there'), t gets the bytes s had and
+        /// ERAnimStudio: after a move with a file swap (New Animation from Current, 'Move the original there'), t gets the bytes s had and
         /// s gets the copy's, both decoded anew. AddNewHKXToLoad can't replace an ID that is loaded already.
         /// </summary>
         public void SwapLoadedHkx(SplitAnimID s, SplitAnimID t, string sName, string tName, byte[] copy, string copyCompendium)

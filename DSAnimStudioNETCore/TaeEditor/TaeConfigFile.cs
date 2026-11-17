@@ -246,10 +246,10 @@ namespace DSAnimStudio.TaeEditor
         public bool LimitFPSWhenWindowUnfocused = true;
         public bool StopUpdatingWhenWindowUnfocused = true;
 
-        // ERAnimStudio: Havok Content Tools 2018.1's hctStandAloneFilterManager.exe, for Duplicate Animation (Crop)'s crops and mirrors;
+        // ERAnimStudio: Havok Content Tools 2018.1's hctStandAloneFilterManager.exe, for New Animation from Current's crops and mirrors;
         // filled on launch when empty (HctCompressor.Find: environment variable, registry, default folder)
         public string HavokContentToolsPath = "";
-        // ERAnimStudio: the split binder Duplicate Animation (Crop) wrote into last, offered first
+        // ERAnimStudio: the split binder New Animation from Current wrote into last, offered first
         public string DuplicateCropLastBinder = "";
 
         public SapImportConfigs.ImportConfigFlver2 LastUsedImportConfig_FLVER2 

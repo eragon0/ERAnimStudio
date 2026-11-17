@@ -3805,7 +3805,7 @@ namespace DSAnimStudio.TaeEditor
                 {
                     ShowDialogDuplicateToNewTaeSection(FileContainer.Proj, SelectedAnimCategory);
                 }
-                // ERAnimStudio: Duplicate Animation (Crop)
+                // ERAnimStudio: New Animation from Current
                 else if (Input.CtrlOnlyHeld && Input.KeyDown(Keys.Insert) && !Graph.IsGhostGraph && DuplicateCrop.Enabled(this))
                 {
                     DuplicateCrop.ShowDialog(this);

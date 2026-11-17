@@ -1,5 +1,5 @@
 #if DUPLICATECROP_SELFTEST
-// The in-app test of Duplicate Animation (Crop), compiled only into a build made with -p:DuplicateCropSelfTest=true and run only with
+// The in-app test of New Animation from Current, compiled only into a build made with -p:DuplicateCropSelfTest=true and run only with
 // the DUPLICATECROP_SELFTEST environment variable set to a spec file. Meant for a copy of the program and of a project, never a real
 // one. It opens the spec's anibnd (and 'anibnd2' in a second tab), runs each case through the same code as the dialog's Accept
 // (Check, then Start; the yes / no question answered by the case), records what happened and the state of every target (entries,
@@ -175,7 +175,7 @@ namespace DSAnimStudio.TaeEditor
                             Note("saving every tab through the program's own save");
                             saveTarget = tabs.Count;
                             foreach (var t in tabs)
-                                t.EditorScreen.SaveCurrentFile(() => savedCount++, "Duplicate Animation (Crop) self-test save");
+                                t.EditorScreen.SaveCurrentFile(() => savedCount++, "New Animation from Current self-test save");
                             stage = 4;
                         }
                         else

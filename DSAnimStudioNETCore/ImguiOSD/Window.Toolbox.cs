@@ -580,14 +580,14 @@ namespace DSAnimStudio.ImguiOSD
 
                 ImGui.Separator();
 
-                // ERAnimStudio: Havok Content Tools 2018.1, for Duplicate Animation (Crop)'s crops and mirrors
+                // ERAnimStudio: Havok Content Tools 2018.1, for New Animation from Current's crops and mirrors
                 if (OSD.RequestExpandAllTreeNodes)
                     ImGui.SetNextItemOpen(true);
 
                 if (ImGui.TreeNode("[Havok Content Tools]"))
                 {
                     ImGui.TextWrapped("hctStandAloneFilterManager.exe of Havok Content Tools " + HkxEdit.HctCompressor.RequiredVersion
-                        + ": crops and mirrors in Duplicate Animation (Crop) need it. Found on launch when this is empty.");
+                        + ": crops and mirrors in Edit > New Animation from Current need it. Found on launch when this is empty.");
                     string path = HkxEdit.HctCompressor.ManualPath ?? "";
                     ImGui.PushItemWidth(-1);
                     if (ImGui.InputText("##HavokContentToolsPath", ref path, 1024))

@@ -5,7 +5,7 @@ using System.Linq;
 namespace DSAnimStudio.HkxEdit
 {
     /// <summary>
-    /// The hkx of Duplicate Animation (Crop): a crop to a frame range and / or a mirror, written as Elden Ring's files are (the frames
+    /// The hkx of New Animation from Current: a crop to a frame range and / or a mirror, written as Elden Ring's files are (the frames
     /// decoded, cut or mirrored, written uncompressed through Havoc, spline-compressed by Havok Content Tools 2018.1, read back and
     /// compared). Frames are the editor's, 30 a second, converted to the file's own when it has another rate.
     /// </summary>

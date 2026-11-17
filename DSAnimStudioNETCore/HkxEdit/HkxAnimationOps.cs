@@ -5,7 +5,7 @@ using System.Numerics;
 
 namespace DSAnimStudio.HkxEdit
 {
-    /// <summary>What Duplicate Animation (Crop) does to the frames: a crop to a range and a left / right mirror.</summary>
+    /// <summary>What New Animation from Current does to the frames: a crop to a range and a left / right mirror.</summary>
     public static class HkxAnimationOps
     {
         /// <summary>

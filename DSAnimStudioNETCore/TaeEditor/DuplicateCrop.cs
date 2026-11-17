@@ -1,4 +1,4 @@
-// ERAnimStudio: 'Duplicate Animation (Crop)...' in the Edit menu, after 'Duplicate Animation' (Ctrl+Insert): the current animation
+// ERAnimStudio: 'New Animation from Current...' in the Edit menu, after 'Duplicate Animation' (Ctrl+Insert): the current animation
 // duplicated to a new ID together with its hkx, both cropped to a frame range when one is given.
 //   - Frames are the editor's, 30 a second, as the timeline shows them. No first and no last frame: no crop, a copy of the entry and
 //     of its hkx at the new ID. A first and / or a last frame (a missing one is the source's first / last): the hkx is cut to those
@@ -53,7 +53,7 @@ namespace DSAnimStudio.TaeEditor
 
     public static class DuplicateCrop
     {
-        public const string MenuText = "Duplicate Animation (Crop)...";
+        public const string MenuText = "New Animation from Current...";
         public const string Shortcut = "Ctrl+Insert";
         const double Fps = HkxEditPipeline.EditorFps;
         const double Eps = 0.0005;          // seconds: well under a frame
@@ -447,7 +447,7 @@ namespace DSAnimStudio.TaeEditor
                         catch (Exception e)
                         {
                             busy = false;
-                            ui.Error("Duplication Failed", $"{w.Binder.Name}.hkx is in {Path.GetFileName(r.Binder)}, but the TAE entry failed: {e.Message}");
+                            ui.Error("New Animation Failed", $"{w.Binder.Name}.hkx is in {Path.GetFileName(r.Binder)}, but the TAE entry failed: {e.Message}");
                             finished(false);
                         }
                     }));
@@ -455,20 +455,20 @@ namespace DSAnimStudio.TaeEditor
                 catch (HkxEditRefused e)
                 {
                     busy = false;
-                    ui.Error("Duplication Failed", e.Message);
+                    ui.Error("New Animation Failed", e.Message);
                     finished(false);
                 }
                 catch (Exception e)
                 {
                     busy = false;
-                    ui.Error("Duplication Failed", $"{e.GetType().Name}: {e.Message}");
+                    ui.Error("New Animation Failed", $"{e.GetType().Name}: {e.Message}");
                     finished(false);
                 }
             }, 0, false, 16, false, zzz_LoadingTaskManIns.TaskFlags.Critical);
             if (!started)
             {
                 busy = false;
-                ui.Error("Duplication Failed", "the previous duplicate is still running");
+                ui.Error("New Animation Failed", "the previous one is still being written");
                 finished(false);
             }
         }
@@ -715,7 +715,7 @@ namespace DSAnimStudio.TaeEditor
         static readonly Vector4 Amber = new Vector4(1f, 0.75f, 0.3f, 1f);
         static readonly Vector4 Red = new Vector4(1f, 0.4f, 0.4f, 1f);
 
-        public DuplicateCropDialog(TaeEditorScreen tae, DSAProj.Animation source) : base("Duplicate Animation (Crop)")
+        public DuplicateCropDialog(TaeEditorScreen tae, DSAProj.Animation source) : base("New Animation from Current")
         {
             this.tae = tae;
             this.source = source;
