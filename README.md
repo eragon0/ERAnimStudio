@@ -36,7 +36,7 @@ Things to know:
 
 ### Fixes to DS Anim Studio
 
-- A weapon with hundreds of animations of its own no longer makes playback lag.
+- A weapon with hundreds of animations in its own parts file no longer makes playback lag.
 - **Edit Animation Properties** (F3): Enter saves and closes, as **Save & Accept** does.
 - **Duplicate Animation** puts the copy in ID order straight away.
 - Duplicating an entry that imports its own ID's hkx keeps that import, instead of leaving the copy with no animation.
