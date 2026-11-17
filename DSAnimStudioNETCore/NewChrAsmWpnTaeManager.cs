@@ -41,6 +41,11 @@ namespace DSAnimStudio
         public DSAProj FakeProj;
         public zzz_DocumentIns FakeDoc = new zzz_DocumentIns(null);
 
+        // ERAnimStudio: what the last pass of GetTaeAnimSolveRefs' dummy-entry fill covered
+        private DSAProj.AnimCategory dummyFillCategory;
+        private NewAnimationContainer dummyFillContainer;
+        private int dummyFillIdCount = -1;
+
         public SplitAnimID GetDefaultAnimID(DSAProj proj)
         {
             
@@ -73,6 +78,14 @@ namespace DSAnimStudio
             // Add dummy TAE entries for any HKXs that exist but aren't in the TAE, ghetto but should hopefully work xd
             var hkxs = Mdl.AnimContainer.GetAllAnimationIDs();
             var animationList = TaeCategory.INNER_GetAnimations();
+            // ERAnimStudio: this runs on every playback update, and the check below is quadratic in the weapon's animation count
+            // (a weapon with ~1000 animations lagged badly). The dummy entries only ever grow through this loop, so a pass over
+            // the same container, category and ID count as the last one has nothing to add: skip it.
+            bool sameAsLastPass = dummyFillCategory == TaeCategory && dummyFillContainer == Mdl.AnimContainer && dummyFillIdCount == hkxs.Count;
+            dummyFillCategory = TaeCategory;
+            dummyFillContainer = Mdl.AnimContainer;
+            dummyFillIdCount = hkxs.Count;
+            if (!sameAsLastPass)
             foreach (var h in hkxs)
             {
                 if (!animationList.Any(a => a.SplitID == h))

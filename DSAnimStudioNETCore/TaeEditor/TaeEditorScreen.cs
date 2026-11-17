@@ -1722,6 +1722,8 @@ namespace DSAnimStudio.TaeEditor
                             ImmediateImportAnim(newAnimRef, currentAnimID);
                             newAnimRef.SplitID = splitID;
                             category.SAFE_AddAnimation(newAnimRef);
+                            // ERAnimStudio: the copy in ID order at once (AddAnimation appends to the end of the list)
+                            category.SAFE_ResortAnimIDs();
                             RecreateAnimList();
                             SelectNewAnimRef(category, newAnimRef);
                         }
@@ -3198,12 +3200,9 @@ namespace DSAnimStudio.TaeEditor
 
                         if (asStandard.ImportsHKX)
                         {
+                            // ERAnimStudio: a source importing its own ID's hkx keeps that import in the copy. Clearing it (as
+                            // upstream did) left the copy playing an hkx under its new ID, which doesn't exist.
                             header.ImportHKXSourceAnimID = asStandard.ImportHKXSourceAnimID;
-                            if (header.ImportHKXSourceAnimID == animID) // somehow lol
-                            {
-                                header.ImportHKXSourceAnimID = -1;
-                                header.ImportsHKX = false;
-                            }
                         }
                         else
                         {

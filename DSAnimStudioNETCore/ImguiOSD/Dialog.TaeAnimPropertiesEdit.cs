@@ -453,7 +453,9 @@ namespace DSAnimStudio.ImguiOSD
                         ImGui.SetTooltip("Cannot accept changes until the animation ID formatting errors (shown in red) are fixed.");
                     }
                 }
-                if (ImGui.IsItemClicked())
+                // ERAnimStudio: Enter also saves and accepts, while this window has focus (so Enter answering one of its
+                // Yes / No questions on top doesn't also save it)
+                if (ImGui.IsItemClicked() || (IsEnterKeyRequested && ImGui.IsWindowFocused(ImGuiFocusedFlags.RootAndChildWindows)))
                 {
                     if (!grayedOutAcceptButton)
                     {
