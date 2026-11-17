@@ -1,0 +1,2 @@
+# ERAnimStudio: the HCT filter set is embedded byte for byte (Havok Content Tools loads it as written)
+*.hko -text

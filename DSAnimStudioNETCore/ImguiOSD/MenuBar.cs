@@ -39,6 +39,9 @@ namespace DSAnimStudio.ImguiOSD
         
         public static void BuildMenuBar(ref bool anyItemFocused)
         {
+#if DUPLICATECROP_SELFTEST
+            TaeEditor.DuplicateCropSelfTest.Frame();
+#endif
             bool anyItemFocusedInner = false;
             bool isAnyMenuExpanded = false;
             

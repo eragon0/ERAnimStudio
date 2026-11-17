@@ -72,7 +72,8 @@ namespace DSAnimStudio.ImguiOSD
             }
         }
 
-        private static void AddDialog(Dialog dlg)
+        // ERAnimStudio: internal, so Duplicate Animation (Crop)'s dialog opens as the program's own dialogs do
+        internal static void AddDialog(Dialog dlg)
         {
             lock (_lock)
             {

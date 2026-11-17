@@ -114,7 +114,11 @@ namespace DSAnimStudio.ImguiOSD
 
                 if (ClickItem("Duplicate Animation", Tae.IsFileOpen && Tae.SelectedAnim?.IS_DUMMY_ANIM == false, "Insert"))
                     Tae.ShowDialogDuplicateCurrentAnimation();
-                
+
+                // ERAnimStudio: the copy with its own hkx, cropped and / or mirrored
+                if (ClickItem(TaeEditor.DuplicateCrop.MenuText, TaeEditor.DuplicateCrop.Enabled(Tae), TaeEditor.DuplicateCrop.Shortcut))
+                    TaeEditor.DuplicateCrop.ShowDialog(Tae);
+
                 if (ClickItem("Duplicate Animation Category", Tae.IsFileOpen, "Shift+Insert"))
                     Tae.ShowDialogDuplicateToNewTaeSection(Tae.Proj, Tae.SelectedAnimCategory);
 

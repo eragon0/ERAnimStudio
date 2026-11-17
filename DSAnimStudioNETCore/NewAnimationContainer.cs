@@ -494,6 +494,29 @@ namespace DSAnimStudio
             }
         }
 
+        /// <summary>
+        /// ERAnimStudio: after a move with a file swap (Duplicate Animation (Crop), 'Move the original there'), t gets the bytes s had and
+        /// s gets the copy's, both decoded anew. AddNewHKXToLoad can't replace an ID that is loaded already.
+        /// </summary>
+        public void SwapLoadedHkx(SplitAnimID s, SplitAnimID t, string sName, string tName, byte[] copy, string copyCompendium)
+        {
+            lock (_lock_AnimCacheAndDict)
+            {
+                animHKXsToLoad[t] = animHKXsToLoad[s];
+                animHKXsNameAssign[t] = tName;
+                if (animHKXsCompendiumAssign.TryGetValue(s, out string sc))
+                    animHKXsCompendiumAssign[t] = sc;
+                animHKXsToLoad[s] = copy;
+                animHKXsNameAssign[s] = sName;
+                if (!string.IsNullOrEmpty(copyCompendium))
+                    animHKXsCompendiumAssign[s] = copyCompendium;
+                else
+                    animHKXsCompendiumAssign.Remove(s);   // a new file carries its own types
+                AnimationCache.Remove(s);
+                AnimationCache.Remove(t);
+            }
+        }
+
         public void AddNewAnimation_Deprecated(SplitAnimID id, string name, NewHavokAnimation anim)
         {
             lock (_lock_AnimCacheAndDict)

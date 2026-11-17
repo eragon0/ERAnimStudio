@@ -164,6 +164,15 @@ namespace DSAnimStudio
         private static List<zzz_DocumentIns> Documents = new();
         private static List<zzz_DocumentIns> DeadDocuments = new();
 
+        // ERAnimStudio: the open tabs with a file open, in their order (Duplicate Animation (Crop) asks which one a copy goes into)
+        public static List<zzz_DocumentIns> GetOpenFileDocuments()
+        {
+            lock (_lock_DocumentSwitcher)
+            {
+                return Documents.Where(d => d != null && !d.IsDisposed && d.EditorScreen != null && d.EditorScreen.IsFileOpen).ToList();
+            }
+        }
+
         private static zzz_DocumentIns RequestedDocumentToSwitchTo = null;
 
         //private static void RequestSwitchDocument(zzz_DocumentIns document)

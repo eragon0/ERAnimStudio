@@ -272,6 +272,11 @@ namespace DSAnimStudio
 
         public static void UpdateSplash(float deltaTime)
         {
+#if DUPLICATECROP_SELFTEST
+            // the self-test runs in a window without focus, where the credits screen waits for a click forever
+            if (TaeEditor.DuplicateCropSelfTest.Active)
+                SplashDismissed = true;
+#endif
             if (SplashState == SplashScreenStates.FadeIn)
             {
                 SplashTimer += deltaTime;

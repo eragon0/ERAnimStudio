@@ -328,3 +328,7 @@ ASALocalRun/
 
 # MFractors (Xamarin productivity tool) working folder 
 .mfractor/
+
+# ERAnimStudio: local build outputs (the self-test build, the console checks)
+/out/
+/Tools/*/out/
