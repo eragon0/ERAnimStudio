@@ -33,19 +33,23 @@ namespace DSAnimStudio.ImguiOSD
             
             protected override void BuildInsideOfWindow()
             {
-                var thisDialogSize = new Vector2(450, 280) * Main.DPIVector;
+                var thisDialogSize = new Vector2(520, 340) * Main.DPIVector;
                 var windowSize = Program.MainInstance.Window.ClientBounds.Size.ToVector2();
 
                 ImGui.SetWindowPos(((windowSize / 2) - (thisDialogSize / 2)).ToCS());
                 ImGui.SetWindowSize(thisDialogSize.ToCS());
 
                 ImGui.TextWrapped(
+                    // ERAnimStudio: what the fork adds, in place of DS Anim Studio's note on its v5 layout
                     "Welcome to ER Anim Studio, an Elden Ring fork of DS Anim Studio v5.0.\n\n" +
-                    "In this version the UI layout is a lot different.\n\n" +
-                    "Try it out, but if you hate it, check out the very first\n" +
-                    "option in the Toolbox panel (Window->Toolbox).\n\n" +
-                    "Also, just so you know, the misc. panels such as \"Entity\",\n" +
-                    "\"Scene\", etc. can be closed with the (X).");
+                    "What it adds:\n\n" +
+                    "- Edit > New Animation from Current (Ctrl+Insert): a new animation from the selected one, " +
+                    "with its own hkx, copied or moved to a new ID, cropped to a frame range and / or mirrored, " +
+                    "written into the split animation binder you pick.\n\n" +
+                    "- Crops and mirrors need Havok Content Tools 2018.1: see Toolbox > [Havok Content Tools].\n\n" +
+                    "- Fixes: no lag with weapons that carry hundreds of animations, Enter saves Edit Animation " +
+                    "Properties (F3), duplicates land in ID order.\n\n" +
+                    "Everything else works as in DS Anim Studio. More on github.com/eragon0/ERAnimStudio.");
                 ImGui.Separator();
                 bool iUnderstand = Main.Config.WelcomeMessageDisabled;
                 ImGui.SetCursorPosX(240 * Main.DPI);
