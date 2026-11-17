@@ -38,6 +38,7 @@
     <None Remove="EmbRes\imgui_default_Legacy.ini" />
     <None Remove="EmbRes\imgui_default_V5.ini" />
     <EmbeddedResource Include="EmbRes\Help.txt" />
+    <EmbeddedResource Include="HkxEdit\HctSplineCompress.hko" />
     <EmbeddedResource Include="EmbRes\imgui_default_Legacy.ini" />
     <EmbeddedResource Include="EmbRes\imgui_default_V5.ini" />
     <None Update="Content\Cubemaps\DefaultCubemap.dds">
