@@ -53,7 +53,8 @@ namespace DSAnimStudio.ImguiOSD
             BuildMenuBar_050_Tools(ref anyItemFocusedInner, ref isAnyMenuExpanded);
             BuildMenuBar_060_Window(ref anyItemFocusedInner, ref isAnyMenuExpanded);
             BuildMenuBar_070_Help(ref anyItemFocusedInner, ref isAnyMenuExpanded);
-            BuildMenuBar_080_SupportMeowmaritus(ref anyItemFocusedInner, ref isAnyMenuExpanded);
+            // ERAnimStudio: no 'Support Meowmaritus' menu in the fork (the credits keep his name first)
+            //BuildMenuBar_080_SupportMeowmaritus(ref anyItemFocusedInner, ref isAnyMenuExpanded);
 
             if (Main.IsDebugBuild)
             {
