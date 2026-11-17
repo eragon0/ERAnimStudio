@@ -29,9 +29,7 @@ namespace DSAnimStudio.ImguiOSD
                         shortcut: "?ServerName? (https://discord.gg/mT2JJjx)", shortcutColor: Color.Cyan))
                     OpenSite("https://discord.gg/mT2JJjx");
 
-                if (ClickItem("My Discord Server (Less Active)", textColor: Color.White,
-                        shortcut: "Meowmaritus Zone (https://discord.gg/J79XMgR)", shortcutColor: Color.Cyan))
-                    OpenSite("https://discord.gg/J79XMgR");
+                // ERAnimStudio: no link to Meowmaritus's own Discord server in the fork
 
                 ImGui.EndMenu();
             }
