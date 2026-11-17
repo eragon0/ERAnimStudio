@@ -12,6 +12,7 @@ Get the zip from the [Releases](https://github.com/eragon0/ERAnimStudio/releases
 
 - Windows 10 or 11, 64-bit, with a DirectX 11 graphics card.
 - [.NET 9 Desktop Runtime (x64)](https://dotnet.microsoft.com/en-us/download/dotnet/9.0).
+- Elden Ring's `oo2core_6_win64.dll` (Oodle), which isn't in the zip: the program copies it from your game folder the first time it needs it, or asks you to browse to it.
 - For crops and mirrors only: **Havok Content Tools 2018.1**. It is Havok's software and can't be shipped with this program. ER Anim Studio finds it on launch (the path given in the settings, the `HCT_FILTER_MANAGER` environment variable, the entry its installer writes in the registry, or its default folder) and shows where in **Toolbox > [Havok Content Tools]**, where you can also set the path by hand. Only version 2018.1 is used, since Elden Ring's animations are Havok 2018.1. Whole copies don't need it.
 
 ## What it adds
