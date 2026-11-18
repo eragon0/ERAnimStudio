@@ -60,7 +60,7 @@ namespace DSAnimStudio.TaeEditor
         public bool EnableFancyScrollingStrings = true;
         public float FancyScrollingStringsScrollSpeed = 64;
         public bool FancyTextScrollSnapsToPixels = true;
-        public bool AutoCollapseAllTaeSections = false;
+        public bool AutoCollapseAllTaeSections = true;   // ERAnimStudio: an opened anibnd starts with its TAEs collapsed (Graph > Start with all TAEs collapsed)
         public bool AnimListShowHkxNames = true;
         public bool AutoScrollDuringAnimPlayback = true;
         public bool SoloHighlightActionOnHover = false;

@@ -29,4 +29,5 @@ Based on DS Anim Studio 5.0-RC6.1 (upstream commit `f1bff06`, "v5-rc6.1 - crash 
 - **Licence text** (2026-11-18): the program's licence file in the release is the GPL-3.0 text of the repository (`LICENSE\ER ANIM STUDIO LICENSE.txt`), replacing an older MIT text that no longer applied.
 - **Welcome dialog** (2026-11-18): it lists what the fork adds, in place of DS Anim Studio's note on its v5 layout, with a link to the project's page that opens in the browser; the box is larger, so it reads without scrolling.
 - **README** (2026-11-18): `README.md` describes the fork; DS Anim Studio's own is kept unchanged as `README-DSAnimStudio.md`.
+- **TAEs start collapsed** (2026-11-18): the setting Graph > Start with all TAEs collapsed is on by default, so an opened anibnd lists its TAEs closed. Configs that already have the setting keep their value.
 - **Small accessors** for the new feature (2026-11-17): `DialogManager.AddDialog` is internal, `zzz_DocumentManager.GetOpenFileDocuments` and `NewAnimationContainer.SwapLoadedHkx` are new.
