@@ -5,10 +5,11 @@
 // settings, and for each case selects the entry (marked mirrored or not), runs the solve as the dialog's Solve does (LeftClearFix.Start),
 // turns the preview on and checks what the editor plays (the bones at the case's frame against the solved copy's, mirrored when marked)
 // and what the left item check measures (its rows against the solve's for the equipped item), writes the copy into the spec's binder
-// (LeftClearFix.Write) and checks the entry's header and the loaded hkx. Then saves through the program's own save and exits. Spec:
+// (LeftClearFix.StartWrite: to the case's 'target', else the ID offered; 'move' moves the original there) and logs both IDs' entries
+// (header, hkx played and loaded, events, Play Mirrored). Then saves through the program's own save and exits. Spec:
 //   {"anibnd": <path>, "log": <path>, "exit": true, "save": true, "binder": "c0000_a8x.anibnd.dcx",
 //    "armor": ["BD_M_1501", ...], "left": "WP_A_2020", "items": "31330000:1;31000000:1;32020000:0;2000000:1;3180000:0",
-//    "cases": [{"entry": "a926_030010", "mirror": false, "frame": 20, "limits": "12,30,60,60,60", "pins": ""}, ...]}
+//    "cases": [{"entry": "a926_030010", "mirror": false, "frame": 20, "limits": "12,30,60,60,60", "pins": "", "target": "a926_030012", "move": false}, ...]}
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -27,6 +28,24 @@ namespace DSAnimStudio.LeftClear
         static string logPath;
         static int stage, frames, waitUntil, caseIndex, phase, savedCount, saveTarget;
         static DateTime started, phaseStarted;
+        static bool writeMove;
+        static bool? writeDone;
+        static SplitAnimID writeSource, writeSourceHkx, writeTarget;
+        static DSAProj.Animation writeOriginal;
+        static Recorder recorder;
+
+        // DuplicateCrop's messages, recorded; its yes / no question (a taken ID in copy mode) answered yes
+        sealed class Recorder : IDuplicateCropUi
+        {
+            public readonly List<string> Lines = new List<string>();
+            public void Error(string title, string text) => Lines.Add($"ERROR {title}: {text}");
+            public void AskYesNo(string title, string question, Action<bool> onChoose)
+            {
+                Lines.Add($"ASKED {title}: {question} -> yes");
+                onChoose(true);
+            }
+            public void Done(string text) => Lines.Add("DONE " + text);
+        }
 
         static void Note(string line)
         {
@@ -279,14 +298,51 @@ namespace DSAnimStudio.LeftClear
                         string binder = binders.FirstOrDefault(b => Path.GetFileName(b).Equals(Str(spec, "binder"), StringComparison.OrdinalIgnoreCase));
                         if (binder == null)
                             throw new InvalidOperationException("no binder " + Str(spec, "binder") + ": " + berr);
-                        var id = LeftClearFix.CopyId(j);
-                        var entry = j.Entry;
-                        string done = LeftClearFix.Write(j, binder);
-                        Note("  written: " + done);
-                        var h = entry.SAFE_GetHeaderClone() as SoulsAssetPipeline.Animation.TAE.Animation.AnimFileHeader.Standard;
-                        Note($"  the entry's header: ImportsHKX={h?.ImportsHKX} ImportHKXSourceAnimID={h?.ImportHKXSourceAnimID} (the copy {DuplicateCrop.HkxName(id.Value)} = "
-                             + $"{id.Value.GetFullID(proj, null)}); plays hkx {entry.GetHkxID(proj).GetFormattedIDString(proj, null)}; the copy loaded: {cnt.AnimExists(id.Value)}; "
-                             + $"a preview left: {LeftClearFix.Current != null}");
+                        // write: to the case's new ID (else the one offered), the original moved there when the case says so
+                        string target = Str(c, "target") ?? LeftClearFix.SuggestId(j)?.GetFormattedIDString(proj, null);
+                        writeMove = c.TryGetProperty("move", out var mvv) && mvv.GetBoolean();
+                        writeSource = j.EntryId;
+                        writeSourceHkx = j.Hkx;
+                        writeOriginal = j.Entry;
+                        writeDone = null;
+                        recorder = new Recorder();
+                        Note($"  writing to {target}{(writeMove ? ", the original moved there" : "")}");
+                        string why = LeftClearFix.StartWrite(j, target, writeMove, binder, recorder, ok => writeDone = ok);
+                        if (why != null)
+                        {
+                            Note("  the write refused: " + why);
+                            Next();
+                            return;
+                        }
+                        SplitAnimID.TryParse(proj, target, out writeTarget, out _);
+                        phase = 3;
+                        phaseStarted = DateTime.Now;
+                        return;
+                    }
+                    if (phase == 3)
+                    {
+                        if (writeDone == null)
+                        {
+                            if ((DateTime.Now - phaseStarted).TotalMinutes > 5)
+                                throw new InvalidOperationException("the write took over 5 minutes");
+                            return;
+                        }
+                        foreach (var line in recorder.Lines)
+                            Note("  ui: " + line);
+                        var cnt = model.AnimContainer;
+                        string Describe(SplitAnimID id)
+                        {
+                            var e = proj.SAFE_GetFirstAnimationFromFullID(id);
+                            if (e == null)
+                                return $"{id.GetFormattedIDString(proj, null)}: no entry";
+                            var h = e.SAFE_GetHeaderClone() as SoulsAssetPipeline.Animation.TAE.Animation.AnimFileHeader.Standard;
+                            var hk = e.GetHkxID(proj);
+                            return $"{id.GetFormattedIDString(proj, null)}: ImportsHKX={h?.ImportsHKX} plays {DuplicateCrop.HkxName(hk)} (loaded {cnt.AnimExists(hk)}), "
+                                   + $"{e.SAFE_GetActions().Count()} events, Play Mirrored {MirrorPlayback.IsMirrored(proj, id)}"
+                                   + (e == writeOriginal ? ", the original" : "");
+                        }
+                        Note($"  written: {writeDone}; the source ID {Describe(writeSource)}; the new ID {Describe(writeTarget)}; "
+                             + $"{DuplicateCrop.HkxName(writeSourceHkx)} still loaded: {cnt.AnimExists(writeSourceHkx)}; a preview left: {LeftClearFix.Current != null}");
                         Next();
                         stage = 2;
                         Wait(60);

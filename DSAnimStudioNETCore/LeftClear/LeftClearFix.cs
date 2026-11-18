@@ -1,6 +1,6 @@
 // ERAnimStudio: 'Left Arm Clearance...' in the Edit menu, after 'New Animation from Current...'. The selected entry's left arm changed
 // so the items in the left hand stay off the body (LcSolver: the solve, a port of the pack's left_clear.py), written as a copy of the
-// hkx the entry plays, and the entry pointed at the copy.
+// hkx the entry plays, to a new ID or in the original's place.
 //   - Items: the equipped left weapon or shield and a list of weapons by ID kept in the config, each 'must clear' or best effort; each
 //     hangs on the dummy its WepAbsorpPosParam gives the left hand. Armor: what the character wears (the meshes the draw mask hides
 //     left out).
@@ -11,9 +11,11 @@
 //     sits on the file's right arm, which the game plays as the left.
 //   - The solve runs in the background (progress, cancel); then a preview: the entry plays the solved frames (Look at it), the left item
 //     check measures them, and the dialog (opened again from the menu) writes the copy or discards it.
-//   - Write: aTTT_AAAAAA.hkx with the next free number after the hkx the entry plays, written through Havok Content Tools 2018.1 into the
-//     split binder picked (at once, not with the project's save), and the entry imports it (its own events stay). An entry importing
-//     another entry's events (type 1) is refused.
+//   - Write, as 'New Animation from Current' writes (DuplicateCrop): to a new ID (offered: the first free after the entry's), the copy a
+//     new entry with the entry's events playing its own aTTT_AAAAAA.hkx; or, with 'Move the original to the new ID', the original goes
+//     there (its own hkx renamed with it when the binder has it) and the copy takes its place. The hkx is written through Havok Content
+//     Tools 2018.1 into the split binder picked, at once, not with the project's save. A mirrored solve's new entry is marked Play
+//     Mirrored too. An entry importing another entry's events (type 1) is refused.
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -284,43 +286,65 @@ namespace DSAnimStudio.LeftClear
             return null;
         }
 
-        // ---- writing the copy
+        // ---- writing the copy, as 'New Animation from Current' writes one (DuplicateCrop): to a new ID, or the original moved there
 
-        /// <summary>The copy's name: the number after the played hkx's, the first one no binder the editor loaded has.</summary>
-        public static SplitAnimID? CopyId(Job j)
+        public const string What = "the left arm cleared";
+
+        /// <summary>Move the original to the new ID: the last choice, for the session.</summary>
+        public static bool LastMove;
+
+        /// <summary>The new ID offered: the first after the entry's own that no entry has and no binder the editor loaded holds.</summary>
+        public static SplitAnimID? SuggestId(Job j)
         {
             var c = DuplicateCrop.Container(j.Tae);
-            for (int k = j.Hkx.SubID + 1; k <= Math.Min(999999, j.Hkx.SubID + 99); k++)
-                if (SplitAnimID.TryParse(j.Proj, $"a{j.Hkx.CategoryID:D3}_{k:D6}", out var id, out _) && c != null && !c.AnimExists(id))
+            var e = j.EntryId;
+            for (int k = e.SubID + 1; k <= Math.Min(999999, e.SubID + 999); k++)
+                if (SplitAnimID.TryParse(j.Proj, $"a{e.CategoryID:D3}_{k:D6}", out var id, out _)
+                    && j.Proj.SAFE_GetFirstAnimationFromFullID(id) == null && (c == null || !c.AnimExists(id)))
                     return id;
             return null;
         }
 
-        /// <summary>Writes the copy into the binder and points the entry at it; returns what was done (throws with why not).</summary>
-        public static string Write(Job j, string binder)
+        /// <summary>
+        /// Starts writing the solved copy: checked as 'New Animation from Current' checks (null when it started, else why not), the hkx
+        /// baked through Havok Content Tools in the background, then the entry made or the original moved. finished(true) once the entry
+        /// is in. A mirrored solve's new entry is marked Play Mirrored too (with a move, the original at its new ID).
+        /// </summary>
+        public static string StartWrite(Job j, string target, bool move, string binder, IDuplicateCropUi ui, Action<bool> finished = null)
         {
             if (j?.Result == null)
-                throw new InvalidOperationException("nothing solved");
-            var hct = HctCompressor.Find(out string why) ?? throw new HkxEditRefused(why + ". Writing the copy needs Havok Content Tools " + HctCompressor.RequiredVersion);
-            var id = CopyId(j) ?? throw new HkxEditRefused($"no free name after {DuplicateCrop.HkxName(j.Hkx)}");
-            string name = DuplicateCrop.HkxName(id);
-            byte[] bytes = LcBake.Write(j.Source, j.Compendium, j.Skeleton, j.Result.Copy, j.Mirror ? "R_UpperArm" : "L_UpperArm", hct, out var rep);
-            var w = HkxBinderWriter.Add(binder, bytes, name);
-            var c = DuplicateCrop.Container(j.Tae);
-            c.AddNewHKXToLoad(id, name + ".hkx", bytes, w.CompendiumName);
-            var h = j.Entry.SAFE_GetHeaderClone() as SoulsAssetPipeline.Animation.TAE.Animation.AnimFileHeader.Standard
-                    ?? throw new InvalidOperationException("the entry is not a standard entry");
-            h.ImportsHKX = true;
-            h.ImportHKXSourceAnimID = id.GetFullID(j.Proj, null);
-            j.Entry.SAFE_SetHeader(h);
-            j.Entry.SAFE_SetIsModified(true);
-            string done = $"{name}.hkx written into {Path.GetFileName(binder)} ({rep.Bytes} B, read back within {rep.ReadBack * 1000:0.0} mm, the rest of the body "
-                          + $"within {rep.RestOfBody * 1000:0.0} mm of the source); {j.EntryId.GetFormattedIDString(j.Proj, null)} now imports it "
-                          + $"(it played {DuplicateCrop.HkxName(j.Hkx)}). Save the project to keep the entry's change.";
-            job = null;
-            if (j.Tae.SelectedAnim == j.Entry)
-                j.Tae.SelectNewAnimRef(j.Entry.ParentCategory, j.Entry, false, false, -1f, false, false);
-            return done;
+                return "nothing solved";
+            var copy = j.Result.Copy;
+            string armRoot = j.Mirror ? "R_UpperArm" : "L_UpperArm";
+            Func<(byte[], string)> build = () =>
+            {
+                var hct = HctCompressor.Find(out string why) ?? throw new HkxEditRefused(why + ". Writing the copy needs Havok Content Tools " + HctCompressor.RequiredVersion);
+                byte[] bytes = LcBake.Write(j.Source, j.Compendium, j.Skeleton, copy, armRoot, hct, out var rep);
+                return (bytes, $"{rep.Bytes} B, read back within {rep.ReadBack * 1000:0.0} mm, the rest of the body within {rep.RestOfBody * 1000:0.0} mm "
+                               + $"of {DuplicateCrop.HkxName(j.Hkx)}");
+            };
+            string err = DuplicateCrop.Check(j.Tae, j.Entry, target, "", "", out var req, false, j.Tae, move, binder, true, build, What);
+            if (err != null)
+                return err;
+            var proj = j.Proj;
+            var targetId = req.Target;
+            bool mirror = j.Mirror;
+            DuplicateCrop.Start(req, ui, ok =>
+            {
+                if (ok)
+                {
+                    if (mirror)
+                        MirrorPlayback.SetMirrored(proj, targetId, true);
+                    if (job == j)
+                        job = null;
+                    // what the selected entry plays, without the preview
+                    var sel = j.Tae.SelectedAnim;
+                    if (sel != null)
+                        j.Tae.Graph?.ViewportInteractor?.OnNewAnimSelected(0, false, sel);
+                }
+                finished?.Invoke(ok);
+            });
+            return null;
         }
 
         // ---- the report
@@ -417,6 +441,10 @@ namespace DSAnimStudio.LeftClear
         readonly string[] binderNames;
         readonly string binderError;
         int binderPick;
+        string target = "";
+        LeftClearFix.Job targetFor;
+        bool move;
+        readonly bool hctFound;
 
         static readonly Vector4 Green = new Vector4(0.45f, 0.9f, 0.45f, 1f);
         static readonly Vector4 Amber = new Vector4(1f, 0.75f, 0.3f, 1f);
@@ -448,6 +476,8 @@ namespace DSAnimStudio.LeftClear
             binders = DuplicateCrop.DestBinders(tae, out _, out binderError);
             binderNames = binders.Select(Path.GetFileName).ToArray();
             binderPick = DuplicateCrop.DefaultBinder(tae, binders);
+            move = LeftClearFix.LastMove;
+            hctFound = HctCompressor.Find(out _) != null;
         }
 
         static void Help(string text)
@@ -523,9 +553,32 @@ namespace DSAnimStudio.LeftClear
                     LeftClearFix.SetPreview(pv);
                 Help("The entry plays the solved frames as the copy will be written (the Left Item Check measures them too).\n"
                      + "Nothing is written until 'Write the copy'.");
-                var id = LeftClearFix.CopyId(j);
-                Label("Copy", column);
-                ImGui.Text(id != null ? DuplicateCrop.HkxName(id.Value) + ".hkx" : "no free name after " + DuplicateCrop.HkxName(j.Hkx));
+                ImGui.Separator();
+                // the new ID (offered once per solve) and the mode, checked as 'New Animation from Current' checks them
+                if (targetFor != j)
+                {
+                    targetFor = j;
+                    var sug = LeftClearFix.SuggestId(j);
+                    target = sug != null ? sug.Value.GetFormattedIDString(j.Proj, null) : "";
+                }
+                string binder = binders.Count > 0 ? binders[binderPick] : null;
+                var look = DuplicateCrop.Look(tae, j.Entry, target, "", "", false, tae, move, binder, null, hctFound, binder == null ? binderError : null,
+                                              LeftClearFix.What, "Write the copy");
+                Label("New ID", column);
+                ImGui.PushItemWidth(160 * Main.DPI);
+                ImGui.InputTextWithHint("##LeftClear.Target", "aTTT_AAAAAA", ref target, 64);
+                ImGui.PopItemWidth();
+                if (!string.IsNullOrEmpty(look.IdStatus))
+                {
+                    ImGui.SameLine();
+                    ImGui.TextColored(look.IdLevel == 0 ? Green : look.IdLevel == 1 ? Amber : Red, look.IdStatus);
+                }
+                Label("", column);
+                ImGui.Checkbox("Move the original to the new ID##LeftClear.Move", ref move);
+                Help("Unticked: the copy is a new entry at the new ID, with the entry's events, playing its own hkx; the original stays as it is.\n\n"
+                     + "Ticked: the original goes to the new ID and the copy takes its place. When the original plays its own hkx and the binder\n"
+                     + "has it, that file is renamed with it and the copy's hkx gets the original's name. Entries importing the original follow it.\n"
+                     + "The new ID must be free.");
                 Label("Binder", column);
                 if (binders.Count > 0)
                 {
@@ -535,6 +588,12 @@ namespace DSAnimStudio.LeftClear
                 }
                 else
                     ImGui.TextColored(Amber, binderError);
+                string problem = look.Problem ?? (hctFound ? null : "Writing the copy needs Havok Content Tools " + HctCompressor.RequiredVersion
+                                                                    + ", which was not found: set its path in Toolbox > [Havok Content Tools].");
+                if (look.Summary != null)
+                    ImGui.TextWrapped(look.Summary);
+                if (problem != null)
+                    ImGui.TextColored(Red, problem);
                 if (error != null)
                     ImGui.TextColored(Red, "Error: " + error);
                 ImGui.Text(" ");
@@ -545,18 +604,14 @@ namespace DSAnimStudio.LeftClear
                     return;
                 }
                 ImGui.SameLine();
-                if (Tools.SimpleClickButton("Write the copy", binders.Count > 0 && id != null))
+                if (Tools.SimpleClickButton("Write the copy", problem == null && !DuplicateCrop.Busy))
                 {
-                    try
+                    error = LeftClearFix.StartWrite(j, target, move, binder, new DuplicateCropUi());
+                    if (error == null)
                     {
-                        string text = LeftClearFix.Write(j, binders[binderPick]);
                         DuplicateCrop.LastBinderName = binderNames[binderPick];
-                        zzz_NotificationManagerIns.PushNotification(text, 8f, 0.5f);
+                        LeftClearFix.LastMove = move;
                         Dismiss();
-                    }
-                    catch (Exception e)
-                    {
-                        error = e.Message;
                     }
                     return;
                 }

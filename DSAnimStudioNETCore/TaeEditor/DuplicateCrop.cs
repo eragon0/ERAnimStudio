@@ -82,6 +82,10 @@ namespace DSAnimStudio.TaeEditor
             public bool Edits => !Whole || Mirror;   // decoded and rewritten (needs Havok Content Tools)
             public bool MoveOriginal;       // the original entry goes to the new ID and the copy takes its place
             public bool OwnHkx;             // the source plays its own ID's hkx, so that file can swap too
+            // a caller with its own hkx (Left Arm Clearance): built in the background in place of the copy or the crop, with a line
+            // for the report; What names it in the messages
+            public Func<(byte[] hkx, string note)> Build;
+            public string What;
         }
 
         public static bool Enabled(TaeEditorScreen tae) =>
@@ -184,7 +188,8 @@ namespace DSAnimStudio.TaeEditor
         }
 
         public static LookResult Look(TaeEditorScreen tae, DSAProj.Animation source, string target, string first, string last, bool mirror,
-                                      TaeEditorScreen dest, bool move, string binder, int? sourceLast, bool hctFound, string binderError)
+                                      TaeEditorScreen dest, bool move, string binder, int? sourceLast, bool hctFound, string binderError,
+                                      string whatOverride = null, string button = "Accept")
         {
             var r = new LookResult();
             var proj = tae?.Proj;
@@ -251,10 +256,12 @@ namespace DSAnimStudio.TaeEditor
                 string what = f0 == null && f1 == null ? "a whole copy" : $"frames {f0 ?? 0}-{f1?.ToString() ?? sourceLast?.ToString() ?? "end"}";
                 if (mirror)
                     what += ", mirrored";
+                what = whatOverride ?? what;
+                string b = button == "Accept" ? button : $"'{button}'";
                 string bn = Path.GetFileName(binder), idName = id.GetFormattedIDString(destProj, null), srcName = source.SplitID.GetFormattedIDString(proj, null);
                 r.Summary = move
-                    ? $"Accept moves {srcName} to {idName}, and the copy ({what}) takes {srcName}. The hkx is written into {bn} at once, not with the project's save."
-                    : $"Accept writes {HkxName(id)}.hkx ({what}) into {bn} at once, not with the project's save, and adds the entry {idName}"
+                    ? $"{b} moves {srcName} to {idName}, and the copy ({what}) takes {srcName}. The hkx is written into {bn} at once, not with the project's save."
+                    : $"{b} writes {HkxName(id)}.hkx ({what}) into {bn} at once, not with the project's save, and adds the entry {idName}"
                       + (dest != tae ? $" to the tab {TabName(dest)}." : ".");
             }
             return r;
@@ -305,7 +312,7 @@ namespace DSAnimStudio.TaeEditor
         // the checks before anything is written; null when the request can go ahead
         public static string Check(TaeEditorScreen tae, DSAProj.Animation source, string target, string first, string last, out Request req,
                                    bool mirror = false, TaeEditorScreen dest = null, bool move = false, string binder = null,
-                                   bool easeRoot = true)
+                                   bool easeRoot = true, Func<(byte[] hkx, string note)> build = null, string what = null)
         {
             req = null;
             dest ??= tae;
@@ -327,14 +334,17 @@ namespace DSAnimStudio.TaeEditor
                 return err;
             if (f0 != null && f1 != null && f0 >= f1)
                 return "the first frame must come before the last one";
+            if (build != null && (f0 != null || f1 != null || mirror))
+                return "an hkx built by the caller is written as it is: no crop or mirror on top";
             HctCompressor.Found hct = null;
-            if (f0 != null || f1 != null || mirror)
+            if (f0 != null || f1 != null || mirror || build != null)
             {
-                // a crop or a mirror is written by Havok Content Tools: refused before anything runs when it isn't there
+                // a crop, a mirror or a caller's hkx is written by Havok Content Tools: refused before anything runs when it isn't there
                 hct = HctCompressor.Find(out string why);
                 if (hct == null)
                     return why + ". Install Havok Content Tools " + HctCompressor.RequiredVersion + ", or set the "
-                           + HctCompressor.EnvironmentVariable + " environment variable to its " + HctCompressor.ExeName + " (a whole copy works without it).";
+                           + HctCompressor.EnvironmentVariable + " environment variable to its " + HctCompressor.ExeName
+                           + (build == null ? " (a whole copy works without it)." : ".");
             }
             var c = Container(tae);
             if (c == null)
@@ -349,7 +359,7 @@ namespace DSAnimStudio.TaeEditor
             if (lastFrame != null && (f0 > lastFrame || f1 > lastFrame))
                 return $"the source's hkx has frames 0-{lastFrame}";
             HkxSkeleton skeleton = null;
-            if (hct != null)
+            if (hct != null && build == null)
             {
                 var sk = c.Skeleton?.OriginalHavokSkeleton;
                 if (sk == null)
@@ -384,6 +394,7 @@ namespace DSAnimStudio.TaeEditor
                 SourceHkx = hkx, SourceBytes = bytes.HkxBytes, SourceCompendium = bytes.CompendiumBytes, Skeleton = skeleton, Hct = hct,
                 Container = dc, Mirror = mirror, MoveOriginal = move, EaseRoot = easeRoot,
                 OwnHkx = hkx.CategoryID == source.SplitID.CategoryID && hkx.SubID == source.SplitID.SubID,
+                Build = build, What = what,
             };
             return null;
         }
@@ -416,6 +427,25 @@ namespace DSAnimStudio.TaeEditor
             public byte[] Hkx;
             public HkxBinderWriter.Result Binder;
             public HkxEditPipeline.Report Edit;   // null for a whole copy
+            public string Note;                  // the caller's line on its hkx (Build)
+        }
+
+        // the hkx described for the messages
+        static string WhatOf(Request r) =>
+            r.Build != null ? r.What ?? "the caller's hkx"
+            : (r.Whole ? "a whole copy" : $"frames {(r.First?.ToString() ?? "0")}-{(r.Last?.ToString() ?? "end")}") + (r.Mirror ? ", mirrored" : "");
+
+        // what the copy is, for the report: the crop's frames, the mirror, the eased root, or the caller's hkx
+        static string RangeText(Request r, Written w)
+        {
+            if (r.Build != null)
+                return $" {WhatOf(r)},";
+            string range = r.Whole ? "" : $" frames {w.Edit.First}-{w.Edit.Last},";
+            if (r.Mirror)
+                range += " mirrored,";
+            if (w.Edit?.Eased == true)
+                range += $" body started on the character ({w.Edit.EasedOffset * 100:0} cm into the root motion),";
+            return range;
         }
 
         static void Run(Request r, IDuplicateCropUi ui, DSAProj.Animation existing, Action<bool> finished)
@@ -426,7 +456,7 @@ namespace DSAnimStudio.TaeEditor
             bool swap = r.MoveOriginal && r.OwnHkx;
             string name = swap ? HkxName(r.SourceId) : HkxName(r.Target);
             string moveTo = swap ? HkxName(r.Target) : null;
-            string what = (r.Whole ? "a whole copy" : $"frames {(r.First?.ToString() ?? "0")}-{(r.Last?.ToString() ?? "end")}") + (r.Mirror ? ", mirrored" : "");
+            string what = WhatOf(r);
             var doc = r.Tae.ParentDocument;
             string title = r.MoveOriginal ? $"Moving {HkxName(r.SourceId)} to {HkxName(r.Target)}, the copy in its place ({what}) ..." : $"Duplicating to {name} ({what}) ...";
             bool started = doc.LoadingTaskMan.DoLoadingTask("DuplicateCrop", title, prog =>
@@ -434,9 +464,12 @@ namespace DSAnimStudio.TaeEditor
                 try
                 {
                     var w = new Written();
-                    w.Hkx = r.Edits
-                        ? HkxEditPipeline.Make(r.SourceBytes, r.SourceCompendium, r.Skeleton, r.First, r.Last, r.Mirror, r.Hct, out w.Edit, r.EaseRoot)
-                        : r.SourceBytes;
+                    if (r.Build != null)
+                        (w.Hkx, w.Note) = r.Build();
+                    else
+                        w.Hkx = r.Edits
+                            ? HkxEditPipeline.Make(r.SourceBytes, r.SourceCompendium, r.Skeleton, r.First, r.Last, r.Mirror, r.Hct, out w.Edit, r.EaseRoot)
+                            : r.SourceBytes;
                     w.Binder = HkxBinderWriter.Add(r.Binder, w.Hkx, name, moveTo, r.SourceBytes);
                     Main.WinForm.Invoke(new Action(() =>
                     {
@@ -494,24 +527,19 @@ namespace DSAnimStudio.TaeEditor
             anim.SplitID = r.Target;
             anim.SAFE_SetHeader(OwnHkxHeader(r.Source, r.Tae.Proj));
             int dropped = 0, kept = 0;
-            string range = "";
             if (!r.Whole)
-            {
                 (dropped, kept) = CropEvents(anim, w.Edit.First / Fps, w.Edit.Last / Fps);
-                range = $" frames {w.Edit.First}-{w.Edit.Last},";
-            }
             anim.SAFE_SetIsModified(true);
             category.SAFE_AddAnimation(anim, -1);
             category.SAFE_ResortAnimIDs();
             tae.RecreateAnimList();
             tae.SelectNewAnimRef(category, anim, false, false, -1f, false, false);
-            if (r.Mirror)
-                range += " mirrored,";
-            if (w.Edit?.Eased == true)
-                range += $" body started on the character ({w.Edit.EasedOffset * 100:0} cm into the root motion),";
+            string range = RangeText(r, w);
             string text = $"Duplicated to {r.Target.GetFormattedIDString(proj, null)}{(r.OtherTab ? " in the tab " + TabName(tae) : "")}:{range} {name}.hkx written into {r.Binder}";
             if (!r.Whole)
                 text += $"; events: {kept} kept, {dropped} dropped";
+            if (w.Note != null)
+                text += "; " + w.Note;
             return text;
         }
 
@@ -548,16 +576,9 @@ namespace DSAnimStudio.TaeEditor
             }
             anim.SAFE_SetHeader(own);
             int dropped = 0, kept = 0;
-            string range = "";
             if (!r.Whole)
-            {
                 (dropped, kept) = CropEvents(anim, w.Edit.First / Fps, w.Edit.Last / Fps);
-                range = $" frames {w.Edit.First}-{w.Edit.Last},";
-            }
-            if (r.Mirror)
-                range += " mirrored,";
-            if (w.Edit?.Eased == true)
-                range += $" body started on the character ({w.Edit.EasedOffset * 100:0} cm into the root motion),";
+            string range = RangeText(r, w);
             // the original to T (the editor's own ID change: out of its category, into T's, sorted)
             proj.SAFE_RegistAnimationIDChange(original, s, t);
             if (originalHeader is TAE.Animation.AnimFileHeader.Standard oh)
@@ -610,6 +631,8 @@ namespace DSAnimStudio.TaeEditor
                           + $"; the copy took {sName}:{range} {(swapped ? HkxName(s) : HkxName(t))}.hkx written into {r.Binder}";
             if (!r.Whole)
                 text += $"; events: {kept} kept, {dropped} dropped";
+            if (w.Note != null)
+                text += "; " + w.Note;
             if (followed.Count > 0)
                 text += $"; {followed.Count} importing entr{(followed.Count == 1 ? "y" : "ies")} now on {tName}: {string.Join(", ", followed)}";
             return text;
