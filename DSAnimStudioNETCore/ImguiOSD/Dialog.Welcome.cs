@@ -33,7 +33,7 @@ namespace DSAnimStudio.ImguiOSD
             
             protected override void BuildInsideOfWindow()
             {
-                var thisDialogSize = new Vector2(520, 340) * Main.DPIVector;
+                var thisDialogSize = new Vector2(640, 480) * Main.DPIVector;   // ERAnimStudio: room for the text without scrolling
                 var windowSize = Program.MainInstance.Window.ClientBounds.Size.ToVector2();
 
                 ImGui.SetWindowPos(((windowSize / 2) - (thisDialogSize / 2)).ToCS());
@@ -49,7 +49,18 @@ namespace DSAnimStudio.ImguiOSD
                     "- Crops and mirrors need Havok Content Tools 2018.1: see Toolbox > [Havok Content Tools].\n\n" +
                     "- Fixes: no lag with weapons that carry hundreds of animations, Enter saves Edit Animation " +
                     "Properties (F3), duplicates land in ID order.\n\n" +
-                    "Everything else works as in DS Anim Studio. More on github.com/eragon0/ERAnimStudio.");
+                    "Everything else works as in DS Anim Studio. More on the project's page:");
+                // ERAnimStudio: the project's page on a row of its own, opened in the browser on a click
+                const string projectPage = "https://github.com/eragon0/ERAnimStudio";
+                ImGui.TextColored(new System.Numerics.Vector4(0.4f, 0.75f, 1f, 1f), projectPage);
+                if (ImGui.IsItemHovered())
+                {
+                    ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
+                    ImGui.SetTooltip("Open in the browser");
+                }
+                if (ImGui.IsItemClicked())
+                    MenuBar.OpenSite(projectPage);
+                ImGui.Text(" ");
                 ImGui.Separator();
                 bool iUnderstand = Main.Config.WelcomeMessageDisabled;
                 ImGui.SetCursorPosX(240 * Main.DPI);
