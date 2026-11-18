@@ -836,6 +836,8 @@ namespace DSAnimStudio.TaeEditor
 
             Label("Mirror", column);
             ImGui.Checkbox("Swap left and right##DuplicateCrop.Mirror", ref mirror);
+            Help("The hkx mirrored after the crop: each bone takes its left / right twin's pose, the root motion's sideways\n"
+                 + "drift and turn flip. The events stay as they are (an effect on the right hand stays on the right hand).");
             // the root bone's offset at the first frame moved into the root motion (on by default)
             Label("Body", column);
             ImGui.Checkbox("Start it on the character##DuplicateCrop.EaseRoot", ref easeRoot);
@@ -845,8 +847,6 @@ namespace DSAnimStudio.TaeEditor
                  + "the character's travel changes by that offset. The root bone's turn (the body twisting through a swing) is left alone.\n\n"
                  + "Untick it for grabs, throws and critical attacks, where the body has to stay where it is relative to the character.\n"
                  + "Crops and mirrors only; a whole copy is never changed.");
-            Help("The hkx mirrored after the crop: each bone takes its left / right twin's pose, the root motion's sideways\n"
-                 + "drift and turn flip. The events stay as they are (an effect on the right hand stays on the right hand).");
             ImGui.Separator();
 
             if (tabs.Count > 1)
