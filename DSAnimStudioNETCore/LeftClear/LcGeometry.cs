@@ -334,6 +334,7 @@ namespace DSAnimStudio.LeftClear
         public readonly double[] W;
         public readonly D3[] L;                 // the vertex in each influence's rest frame
         public readonly int[] Top;
+        public readonly int[] TopK;             // per vertex: which of its 4 influences is the strongest (Top's)
         public readonly string[] Labels;        // sorted
         public readonly int[] Lab;              // per vertex
         public readonly int[] Grp;              // per vertex: its shell (strongest bone and label)
@@ -383,6 +384,7 @@ namespace DSAnimStudio.LeftClear
             var w = new List<double>();
             var l = new List<D3>();
             var top = new List<int>();
+            var topK = new List<int>();
             var label = new List<string>();
             foreach (var piece in pieces)
             {
@@ -433,6 +435,7 @@ namespace DSAnimStudio.LeftClear
                                 topBone = b;
                         }
                         top.Add(topBone);
+                        topK.Add(best);
                         string lab = LcParts.PartOf(sk.Names[topBone], 'L');
                         if (piece.Piece == "am" && (lab == "own hand" || lab == "own forearm"))
                             lab = "gauntlet";
@@ -445,6 +448,7 @@ namespace DSAnimStudio.LeftClear
             W = w.ToArray();
             L = l.ToArray();
             Top = top.ToArray();
+            TopK = topK.ToArray();
             Labels = label.Distinct().OrderBy(x => x, StringComparer.Ordinal).ToArray();
             var labIndex = Labels.Select((x, i) => (x, i)).ToDictionary(t => t.x, t => t.i);
             Lab = label.Select(x => labIndex[x]).ToArray();
@@ -587,6 +591,8 @@ namespace DSAnimStudio.LeftClear
 
         // points
         public D3[] Points;
+        public D3[] FastPoints;          // every third, for the fix's search
+        public bool Required = true;     // the fix: must clear (else as far as the limits allow)
 
         /// <summary>A shield's plate from its model (fh_shield.plate): every triangle sampled 0.25 cm apart along its longest edge.</summary>
         public static LcItem Plate(string name, string model, FLVER2 f)
@@ -641,7 +647,8 @@ namespace DSAnimStudio.LeftClear
             var pts = new List<D3>();
             for (int i = 0; i < p.Length; i += step)
                 pts.Add(p[i]);
-            return new LcItem { Name = name, Model = model, Kind = LcItemKind.Points, Points = pts.ToArray() };
+            return new LcItem { Name = name, Model = model, Kind = LcItemKind.Points, Points = pts.ToArray(),
+                                FastPoints = pts.Where((_, i) => i % 3 == 0).ToArray() };
         }
 
         /// <summary>Hung on a dummy of the character's model: +z on the dummy's forward, +y on its up (left_clear.shield_dummy).</summary>
@@ -684,6 +691,12 @@ namespace DSAnimStudio.LeftClear
         {
             var rb = wq[f, Bone].ToM3();
             return (wt[f, Bone] + rb * Origin, rb * Axes);
+        }
+
+        public (D3 o, M3 r) World(D3[] wt, DQ[] wq)
+        {
+            var rb = wq[Bone].ToM3();
+            return (wt[Bone] + rb * Origin, rb * Axes);
         }
     }
 }

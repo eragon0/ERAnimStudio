@@ -253,6 +253,11 @@ namespace DSAnimStudio.TaeEditor
         public string DuplicateCropLastBinder = "";
         // ERAnimStudio: Animation > Left Item Check (LeftClear\LeftItemCheck.cs)
         public bool LeftItemCheck = false;
+        // ERAnimStudio: Edit > Left Arm Clearance (LeftClear\LeftClearFix.cs): the item list (weapon ID:must clear 1 / 0, ';'), the limits
+        // (wrist move cm, roll, bend 1, bend 2, elbow swing degrees), the game's hold
+        public string LeftClearItems = "";
+        public string LeftClearLimits = "12,30,60,60,60";
+        public bool LeftClearHold = true;
 
         public SapImportConfigs.ImportConfigFlver2 LastUsedImportConfig_FLVER2 
             = new SapImportConfigs.ImportConfigFlver2();

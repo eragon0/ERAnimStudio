@@ -71,6 +71,7 @@ namespace DSAnimStudio.LeftClear
             public string AnimName;
             public bool Mirrored;
             public byte[] Hkx, Compendium;
+            public HkxAnimation Preview;     // a left arm fix being previewed: its solved copy instead of the file
             public HKX.HKASkeleton Skeleton;
             public zzz_DocumentIns Doc;
             public string ChrName;
@@ -95,6 +96,66 @@ namespace DSAnimStudio.LeftClear
         static double progress;
         static CancellationTokenSource cts;
         static DateTime lastLook;
+
+        // ---- shared with the left arm fix (LeftClearFix)
+
+        /// <summary>The armor the character wears, as the viewer loaded it (the gauntlets left out where a weapon hides them).</summary>
+        internal static List<(NewEquipSlot_Armor slot, string piece, string name)> ArmorWorn(NewChrAsm asm)
+        {
+            bool hideArms = asm.WeaponSlots.Any(s => s.IsERHideGlovesModel);
+            var armor = new List<(NewEquipSlot_Armor, string, string)>();
+            foreach (var (type, piece) in new[] { (NewChrAsm.EquipSlotTypes.Body, "bd"), (NewChrAsm.EquipSlotTypes.Arms, "am"),
+                                                 (NewChrAsm.EquipSlotTypes.Legs, "lg"), (NewChrAsm.EquipSlotTypes.Head, "hd") })
+            {
+                if (type == NewChrAsm.EquipSlotTypes.Arms && hideArms)
+                    continue;
+                if (!asm.ArmorSlots_ByEquipSlot.TryGetValue(type, out var slot) || !slot.CheckIfModelLoaded())
+                    continue;
+                string name = slot.GetPartsbndName(asm.IsFemale, asm.CurrentPartSuffixType);
+                if (name != null)
+                    armor.Add((slot, piece, Utils.GetShortIngameFileName(name)));
+            }
+            return armor;
+        }
+
+        /// <summary>The armor's geometry on the skeleton; meshes the draw mask hides don't count.</summary>
+        internal static LcBody BodyOf(LcSkeleton sk, List<(NewEquipSlot_Armor slot, string piece, string name)> armor, bool[] mask)
+        {
+            var pieces = new List<LcArmorPiece>();
+            foreach (var (slot, piece, name) in armor)
+            {
+                var bnd = slot.GetPartsbnd(slot.ASM.IsFemale, slot.ASM.CurrentPartSuffixType, disableCache: false);
+                pieces.Add(new LcArmorPiece { Name = name, Piece = piece, Flver = MainFlver(bnd, name) });
+            }
+            return new LcBody(sk, pieces, (p, mi) =>
+            {
+                var m = p.Flver.Meshes[mi];
+                string mat = m.MaterialIndex >= 0 && m.MaterialIndex < p.Flver.Materials.Count ? p.Flver.Materials[m.MaterialIndex].Name : null;
+                int g = LcBody.MaskGroup(mat);
+                return g < 0 || g >= mask.Length || mask[g];
+            });
+        }
+
+        /// <summary>A left-hand item: its model hung on its dummy of the character's model; a shield (on a *Shield bone) as its plate.</summary>
+        internal static LcItem ItemOf(LcSkeleton sk, FLVER2 chr, FLVER2 itemFlver, int dummy, string name)
+        {
+            if (dummy < 0 || dummy >= 1000 || !chr.Dummies.Any(d => d.ReferenceID == dummy))
+                throw new InvalidOperationException($"{name} hangs on dummy {dummy}, which the character's model doesn't have");
+            var d0 = chr.Dummies.First(d => d.ReferenceID == dummy);
+            string bone = d0.AttachBoneIndex >= 0 && d0.AttachBoneIndex < chr.Nodes.Count ? chr.Nodes[d0.AttachBoneIndex].Name : "";
+            bool shield = bone.Contains("Shield");      // a shield hangs on L_Shield / R_Shield (dummy 23 on the left)
+            var item = shield ? LcItem.Plate(name, name, itemFlver) : LcItem.PointsOf(name, name, itemFlver);
+            item.HangOnDummy(sk, chr, dummy);
+            return item;
+        }
+
+        /// <summary>A weapon's name: its FMG name and model, else its ID.</summary>
+        internal static string WeaponName(zzz_DocumentIns doc, int id, ParamData.EquipParamWeapon equip)
+        {
+            string model = equip?.GetPartBndName_Short(NewChrAsm.EquipSlotTypes.LeftWeapon) ?? "?";
+            return doc?.FmgManager?.WeaponNamesMap_A != null && doc.FmgManager.WeaponNamesMap_A.TryGetValue(id, out var wn)
+                   && !string.IsNullOrWhiteSpace(wn) && !wn.Contains("[ERROR]") ? $"{wn} ({model})" : $"weapon {id} ({model})";
+        }
 
         // ---- the request, every frame on the editor's thread
 
@@ -137,19 +198,7 @@ namespace DSAnimStudio.LeftClear
                 return null;
             }
             int dummy = left.GetFinalAbsorpModelDmyPoly(0);
-            bool hideArms = asm.WeaponSlots.Any(s => s.IsERHideGlovesModel);
-            var armor = new List<(NewEquipSlot_Armor, string, string)>();
-            foreach (var (type, piece) in new[] { (NewChrAsm.EquipSlotTypes.Body, "bd"), (NewChrAsm.EquipSlotTypes.Arms, "am"),
-                                                 (NewChrAsm.EquipSlotTypes.Legs, "lg"), (NewChrAsm.EquipSlotTypes.Head, "hd") })
-            {
-                if (type == NewChrAsm.EquipSlotTypes.Arms && hideArms)
-                    continue;
-                if (!asm.ArmorSlots_ByEquipSlot.TryGetValue(type, out var slot) || !slot.CheckIfModelLoaded())
-                    continue;
-                string name = slot.GetPartsbndName(asm.IsFemale, asm.CurrentPartSuffixType);
-                if (name != null)
-                    armor.Add((slot, piece, Utils.GetShortIngameFileName(name)));
-            }
+            var armor = ArmorWorn(asm);
             if (armor.Count == 0)
             {
                 why = "no armor worn to measure against";
@@ -159,17 +208,17 @@ namespace DSAnimStudio.LeftClear
             if (MaskOff)
                 mask = Enumerable.Repeat(true, mask.Length).ToArray();
             string itemName = equip.GetPartBndName_Short(left.EquipSlotType);
-            string weaponName = tae.ParentDocument?.FmgManager?.WeaponNamesMap_A != null
-                                && tae.ParentDocument.FmgManager.WeaponNamesMap_A.TryGetValue(left.EquipID, out var wn) && !string.IsNullOrWhiteSpace(wn) && !wn.Contains("[ERROR]")
-                ? $"{wn} ({itemName})" : $"weapon {left.EquipID} ({itemName})";
+            string weaponName = WeaponName(tae.ParentDocument, left.EquipID, equip);
             bool mirrored = MirrorPlayback.IsMirrored(proj, entry.SplitID);
+            var preview = LeftClearFix.PreviewOf(proj, entry.SplitID, out int previewVersion);
             string sceneKey = string.Join("|", RuntimeHelpers.GetHashCode(sk), model.Name, itemName, dummy,
                                           string.Join(",", armor.Select(a => a.Item3)), new string(mask.Select(m => m ? '1' : '0').ToArray()));
             return new Request
             {
                 SceneKey = sceneKey,
-                Key = string.Join("|", sceneKey, hkxId.GetFullID(proj, null), RuntimeHelpers.GetHashCode(bytes.HkxBytes), mirrored),
-                AnimName = $"{DuplicateCrop.HkxName(hkxId)}{(mirrored ? " (mirrored)" : "")}",
+                Key = string.Join("|", sceneKey, hkxId.GetFullID(proj, null), RuntimeHelpers.GetHashCode(bytes.HkxBytes), mirrored, previewVersion),
+                AnimName = $"{DuplicateCrop.HkxName(hkxId)}{(preview != null ? " (the left arm fix's preview)" : "")}{(mirrored ? " (mirrored)" : "")}",
+                Preview = preview,
                 Mirrored = mirrored,
                 Hkx = bytes.HkxBytes,
                 Compendium = bytes.CompendiumBytes,
@@ -225,10 +274,10 @@ namespace DSAnimStudio.LeftClear
                     s = Build(req);
                 if (token.IsCancellationRequested)
                     return;
-                HkxAnimation a;
+                HkxAnimation a = req.Preview;
                 try
                 {
-                    a = HkxAnimationFile.Read(req.Hkx, req.Compendium).Decoded;
+                    a ??= HkxAnimationFile.Read(req.Hkx, req.Compendium).Decoded;
                 }
                 catch (Exception e)
                 {
@@ -276,7 +325,7 @@ namespace DSAnimStudio.LeftClear
             }
         }
 
-        static FLVER2 MainFlver(SoulsFormats.IBinder bnd, string what)
+        internal static FLVER2 MainFlver(SoulsFormats.IBinder bnd, string what)
         {
             var f = bnd?.Files.FirstOrDefault(x =>
             {
@@ -291,28 +340,10 @@ namespace DSAnimStudio.LeftClear
         static Scene Build(Request req)
         {
             var sk = new LcSkeleton(HkxSkeleton.FromHavok(req.Skeleton));
-            var pieces = new List<LcArmorPiece>();
-            foreach (var (slot, piece, name) in req.Armor)
-            {
-                var bnd = slot.GetPartsbnd(slot.ASM.IsFemale, slot.ASM.CurrentPartSuffixType, disableCache: false);
-                pieces.Add(new LcArmorPiece { Name = name, Piece = piece, Flver = MainFlver(bnd, name) });
-            }
-            var body = new LcBody(sk, pieces, (p, mi) =>
-            {
-                var m = p.Flver.Meshes[mi];
-                string mat = m.MaterialIndex >= 0 && m.MaterialIndex < p.Flver.Materials.Count ? p.Flver.Materials[m.MaterialIndex].Name : null;
-                int g = LcBody.MaskGroup(mat);
-                return g < 0 || g >= req.Mask.Length || req.Mask[g];
-            });
+            var body = BodyOf(sk, req.Armor, req.Mask);
             var chr = MainFlver(req.Doc.GameData.ReadBinder($"/chr/{req.ChrName}.chrbnd.dcx"), req.ChrName);
-            var itemFlver = MainFlver(req.Equip.GetPartBnd(req.SlotType, false), req.ItemName);
-            if (req.Dummy < 0 || req.Dummy >= 1000 || !chr.Dummies.Any(d => d.ReferenceID == req.Dummy))
-                throw new InvalidOperationException($"the left item hangs on dummy {req.Dummy}, which the character's model doesn't have");
-            var d0 = chr.Dummies.First(d => d.ReferenceID == req.Dummy);
-            string bone = d0.AttachBoneIndex >= 0 && d0.AttachBoneIndex < chr.Nodes.Count ? chr.Nodes[d0.AttachBoneIndex].Name : "";
-            bool shield = bone.Contains("Shield");      // a shield hangs on L_Shield / R_Shield (dummy 23 on the left)
-            var item = shield ? LcItem.Plate(req.ItemName, req.ItemName, itemFlver) : LcItem.PointsOf(req.ItemName, req.ItemName, itemFlver);
-            item.HangOnDummy(sk, chr, req.Dummy);
+            var item = ItemOf(sk, chr, MainFlver(req.Equip.GetPartBnd(req.SlotType, false), req.ItemName), req.Dummy, req.ItemName);
+            bool shield = item.Kind == LcItemKind.Plate;
             return new Scene
             {
                 Key = req.SceneKey,
@@ -468,6 +499,8 @@ namespace DSAnimStudio.LeftClear
             var entry = tae?.SelectedAnim;
             if (proj != null && entry != null && MirrorPlayback.IsMirrored(proj, entry.SplitID))
                 printer.AppendLine("Playing mirrored (as a mirrored behavior clip)", Color.Cyan);
+            if (proj != null && entry != null && LeftClearFix.PreviewOf(proj, entry.SplitID, out _) != null)
+                printer.AppendLine("Previewing the left arm fix (Edit > Left Arm Clearance: write the copy or discard it)", Color.Cyan);
             if (!Enabled)
                 return;
             var r = Current(out string state);

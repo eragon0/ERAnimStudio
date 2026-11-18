@@ -141,6 +141,8 @@ namespace DSAnimStudio
                     if (result != null)
                     {
                         result.TaeAnimation = taeAnimActionSrc;
+                        // ERAnimStudio: a left arm fix being previewed plays its solved frames (LeftClear\LeftClearFix.cs)
+                        result = LeftClear.LeftClearFix.PreviewPlayback(Proj, request.TaeAnimID, result);
                         // ERAnimStudio: an entry marked 'Play Mirrored' plays as a mirrored behavior clip does
                         if (LeftClear.MirrorPlayback.IsMirrored(Proj, request.TaeAnimID))
                             result = LeftClear.MirrorPlayback.Wrap(result);

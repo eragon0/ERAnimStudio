@@ -5,6 +5,9 @@
 //     Items: the shields hang on dummy 23, the weapons on L_Weapon (the pack's left_clear.py); --dummies: each on the dummy the editor
 //     hangs it on (the Distinguished Greatshield on 98, the weapons on 21); --mirror measures the animation as a mirrored clip plays it.
 //     Prints each item's frames over 1 cm per body part (as the pack's left_clear.py measure) and writes the per-frame rows (cm).
+//   LeftClearCheck solve <folder> <hkx name> [--mirror] [--pin 3-19,27-34] [--limits 12,30,60,60,60] [--no-hold] [--out <name>] [--report <file>]
+//     the left arm fix (LcSolver) with the items on the editor's dummies (must clear: the Heater, Kite and Longsword); --out writes the
+//     copy through Havok Content Tools into <folder>\<name>.hkx
 //   LeftClearCheck info <folder>     the skeleton, the armor's vertices and shells, the items' shapes and where they hang
 using System;
 using System.Collections.Generic;
@@ -49,7 +52,7 @@ var armor = new[] { "bd_m_1501", "am_m_1500", "lg_m_1500", "hd_m_1500" };
 
 // --dummies: each item hung on the dummy the game's WepAbsorpPosParam gives it (the editor's placement: the shields on 23, the
 // Distinguished Greatshield on 98, the weapons on 21) instead of left_clear.py's (every shield on 23, the weapons on L_Weapon by a fixed turn)
-bool useDummies = args.Contains("--dummies");
+bool useDummies = args.Contains("--dummies") || (args.Length > 0 && args[0] == "solve");
 var dummyOf = new Dictionary<string, int> { ["wp_a_2020"] = 23, ["wp_a_2033"] = 23, ["wp_a_2010"] = 98, ["wp_a_0200"] = 21, ["wp_a_0601"] = 21 };
 
 (LcSkeleton sk, LcBody body, List<LcItem> its) Load(string folder)
@@ -66,11 +69,13 @@ var dummyOf = new Dictionary<string, int> { ["wp_a_2020"] = 23, ["wp_a_2033"] = 
         if (kind == "shield")
         {
             it = LcItem.Plate(name, model, f);
+            it.Required = model != "wp_a_2010";
             it.HangOnDummy(sk, chr, useDummies ? dummyOf[model] : 23);
         }
         else
         {
             it = LcItem.PointsOf(name, model, f);
+            it.Required = model == "wp_a_0200";
             if (useDummies)
                 it.HangOnDummy(sk, chr, dummyOf[model]);
             else
@@ -122,6 +127,110 @@ try
             string shape = it.Kind == LcItemKind.Plate ? $"plate {it.Nx} x {it.Ny} bins from ({it.X0:0.###}, {it.Y0:0.###}), radius {it.Radius:0.###}" : $"{it.Points.Length} points";
             Console.WriteLine($"{it.Name} ({it.Model}): {shape}; on {it.Hanging}, origin {it.Origin}, axes x {it.Axes.Column(0)} y {it.Axes.Column(1)} z {it.Axes.Column(2)}; root bone {root?.Name} t {root?.Translation} r {root?.Rotation}");
         }
+        return 0;
+    }
+    if (cmd == "armdiff")
+    {
+        // how far a copy's left hand is from the source's, per frame: the wrist's move (cm) and the hand's turn (degrees), as played
+        bool mirror = Flag(args2, "--mirror");
+        string folder = args2[0];
+        var sk = new LcSkeleton(Skeleton(Path.Combine(folder, "Skeleton.hkx")));
+        HkxAnimation Read(string n)
+        {
+            byte[] b = File.ReadAllBytes(Path.Combine(folder, n + ".hkx"));
+            string cp = new[] { n + ".compendium", "dual.compendium" }.Select(c => Path.Combine(folder, c)).FirstOrDefault(File.Exists);
+            try { return HkxAnimationFile.Read(b).Decoded; }
+            catch (InvalidDataException) when (cp != null) { return HkxAnimationFile.Read(b, File.ReadAllBytes(cp)).Decoded; }
+        }
+        var a = Read(args2[1]);
+        int H = sk.Bone("L_Hand");
+        if (mirror)
+            a = HkxAnimationOps.Mirror(sk.Hkx, a);
+        var (wa, qa) = sk.Pose(a);
+        for (int k = 2; k < args2.Count; k++)
+        {
+            var b = Read(args2[k]);
+            if (mirror)
+                b = HkxAnimationOps.Mirror(sk.Hkx, b);
+            var (wb, qb) = sk.Pose(b);
+            int n = Math.Min(a.Frames, b.Frames);
+            var mv = Enumerable.Range(0, n).Select(f => (wa[f, H] - wb[f, H]).Length() * 100).ToArray();
+            var tn = Enumerable.Range(0, n).Select(f => DQ.AngleBetween(qa[f, H], qb[f, H])).ToArray();
+            Console.WriteLine($"{args2[k]}: " + string.Join(" ", Enumerable.Range(0, n).Select(f => $"{mv[f]:0.0}/{tn[f]:0}")));
+        }
+        return 0;
+    }
+    if (cmd == "solve")
+    {
+        // the left arm fix on a file: solve, write the copy through HCT into <folder>\<out>.hkx, a report
+        string pins = Opt(args2, "--pin"), lims = Opt(args2, "--limits"), outName = Opt(args2, "--out"), rep = Opt(args2, "--report"), rowsJson = Opt(args2, "--rows");
+        bool mirror = Flag(args2, "--mirror"), noHold = Flag(args2, "--no-hold");
+        string folder = args2[0], name = args2[1];
+        var (sk, body, its) = Load(folder);
+        string compPath = new[] { name + ".compendium", "dual.compendium" }.Select(c => Path.Combine(folder, c)).FirstOrDefault(File.Exists);
+        byte[] hkx = File.ReadAllBytes(Path.Combine(folder, name + ".hkx"));
+        byte[] comp = null;
+        HkxAnimation a;
+        try
+        {
+            a = HkxAnimationFile.Read(hkx).Decoded;
+        }
+        catch (InvalidDataException) when (compPath != null)
+        {
+            comp = File.ReadAllBytes(compPath);
+            a = HkxAnimationFile.Read(hkx, comp).Decoded;
+        }
+        var input = new LcSolveInput
+        {
+            Sk = sk, Body = body, Items = its, Source = a, Mirror = mirror, Hold = !noHold, Limits = LcLimits.Parse(lims ?? "12,30,60,60,60"),
+        };
+        foreach (var r in (pins ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var ab = r.Split('-');
+            input.Pins.Add((int.Parse(ab[0]), int.Parse(ab[^1])));
+        }
+        double lastP = -1;
+        var res = new LcSolver(input).Run((p, label) =>
+        {
+            if (p - lastP >= 0.1 || p >= 1)
+            {
+                lastP = p;
+                Console.WriteLine($"   {p * 100:0}% {label}");
+            }
+        }, System.Threading.CancellationToken.None);
+        var sb = new StringBuilder();
+        sb.AppendLine($"== {name}: {res.Frames} frames, {res.Seconds:0} s" + (mirror ? ", solved as a mirrored clip plays it" : "") + $"; limits {input.Limits}"
+                      + (input.Pins.Count > 0 ? "; pins " + string.Join(", ", input.Pins.Select(p => $"{p.first}-{p.last}")) : ""));
+        foreach (var l in res.Log)
+            sb.AppendLine("   " + l);
+        void Lines(string title, Dictionary<string, double>[][] rows)
+        {
+            sb.AppendLine("   " + title + ":");
+            for (int i = 0; i < its.Count; i++)
+            {
+                int n = rows.Count(r => r[i].Values.Any(v => v > 0.01));
+                double deep = rows.Max(r => r[i].Count == 0 ? 0 : r[i].Values.Max());
+                sb.AppendLine($"      {its[i].Name} ({(its[i].Required ? "must clear" : "best effort")}): {n} frames over 1 cm, deepest {deep * 100:0.0} cm");
+            }
+        }
+        Lines("before", res.Before);
+        Lines("with the game's hold only", res.Held);
+        Lines("after", res.After);
+        sb.AppendLine($"   the change: wrist moved up to {res.MoveMax * 100:0.0} cm (median {res.MoveMedian * 100:0.0}); hand's whole turn about the forearm median {res.RollMedian:0}, up to {res.RollMax:0}; bent up to {res.BendMax:0}; elbow swung up to {res.SwingMax:0}");
+        sb.AppendLine($"   the palm to the torso's line: before {res.PalmBefore:0} degrees on median, after {res.PalmAfter:0} ({res.PalmWithin45 * 100:0}% of frames within 45); settled fully {res.SettledFully} of {res.Frames}");
+        if (outName != null)
+        {
+            var hct = HctCompressor.Find(out string why) ?? throw new Exception(why);
+            byte[] bytes = LcBake.Write(hkx, comp, sk.Hkx, res.Copy, mirror ? "R_UpperArm" : "L_UpperArm", hct, out var br);
+            File.WriteAllBytes(Path.Combine(folder, outName + ".hkx"), bytes);
+            sb.AppendLine($"   written {outName}.hkx, {br.Bytes} B: read back within {br.ReadBack * 1000:0.0} mm, the rest of the body within {br.RestOfBody * 1000:0.0} mm of the source, root motion {br.RootMotion}");
+        }
+        if (rowsJson != null)
+            File.WriteAllText(rowsJson, "{\"name\": \"" + name + "\", \"frames\": " + res.Frames + ", \"rows\": [\n" + string.Join(",\n", res.After.Select(r =>
+                "{" + string.Join(", ", its.Select((it, i) => $"\"{it.Name}\": {{" + string.Join(", ", r[i].Select(kv => $"\"{kv.Key}\": {Math.Round(kv.Value * 100, 2)}")) + "}")) + "}")) + "\n]}\n");
+        Console.Write(sb.ToString());
+        if (rep != null)
+            File.WriteAllText(rep, sb.ToString());
         return 0;
     }
     if (cmd == "measure")

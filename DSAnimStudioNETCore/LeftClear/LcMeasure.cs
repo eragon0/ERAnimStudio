@@ -6,13 +6,16 @@
 //   - Any other item (its points): how deep its points go inside the armor. A bone's height field says a point may be inside, and
 //     the nearest armor vertex's normal has to face away from it (its distance is the depth); in the head's height field the field
 //     alone decides (a helmet's dome, whose liner faces in). The own hand and forearm are left out: they hold it.
+// The armor that doesn't move with the left arm is posed once per frame (Frame); the left arm's (from L_UpperArm down) is posed from
+// the pose being measured, so the left arm fix can measure many poses of its arm against one frame. 'fast' (the fix's search): every
+// second vertex of the arm rigid on its strongest bone, every second static vertex near a plate, every third point of an item.
 using System;
 using System.Collections.Generic;
 using System.Linq;
 
 namespace DSAnimStudio.LeftClear
 {
-    /// <summary>A 3D tree for the nearest of a set of points.</summary>
+    /// <summary>A 3D tree for the nearest of a set of points, and the points within a radius.</summary>
     public sealed class LcKdTree
     {
         readonly D3[] pts;
@@ -86,6 +89,30 @@ namespace DSAnimStudio.LeftClear
                     Search(lo, mid, q, ref best, ref bestD2);
             }
         }
+
+        /// <summary>The points within r of q (in the tree's order).</summary>
+        public void Within(D3 q, double r, List<int> into)
+        {
+            Range(0, pts.Length, q, r, r * r, into);
+        }
+
+        void Range(int lo, int hi, D3 q, double r, double r2, List<int> into)
+        {
+            if (hi <= lo)
+                return;
+            int mid = (lo + hi) / 2;
+            var p = pts[idx[mid]];
+            if ((p - q).LengthSquared() <= r2)
+                into.Add(idx[mid]);
+            if (hi - lo == 1)
+                return;
+            int ax = axis[mid];
+            double diff = q[ax] - p[ax];
+            if (diff - r <= 0)
+                Range(lo, mid, q, r, r2, into);
+            if (diff + r >= 0)
+                Range(mid + 1, hi, q, r, r2, into);
+        }
     }
 
     /// <summary>A point of a crossing at one frame, for drawing it: where, how deep (m), which body part.</summary>
@@ -102,43 +129,202 @@ namespace DSAnimStudio.LeftClear
         public const double PlateDepthLimit = 0.6;   // m: armor further from the plate's face than this isn't looked at
 
         public readonly LcBody Body;
+        readonly int[] fastMoving;                  // every second vertex of the arm (the search's)
 
         public LcMeasure(LcBody body)
         {
             Body = body;
+            fastMoving = body.MovingV.Where((_, i) => i % 2 == 0).ToArray();
         }
 
-        /// <summary>One frame's posed armor, shared by the items.</summary>
+        /// <summary>One frame's armor that doesn't move with the left arm, shared by the items and by every pose of the arm.</summary>
         public sealed class Frame
         {
             public int F;
-            public D3[] V;                  // blend-skinned vertices
+            public D3[] Wt;                 // the frame's pose (armature space), the one the static armor was posed on
+            public DQ[] Wq;
+            public D3[] SV;                 // the static skinned vertices (Body.StaticV's order)
+            public LcKdTree STree;          // null: found by going through them
             public D3[] P, N;               // rigid vertices of the static bones, their normals
             public LcKdTree Tree;
-            public D3[] PM, NM;             // and of the moving bones (the left arm)
-            public LcKdTree TreeM;
         }
 
-        /// <summary>trees: the nearest-vertex search through trees (every frame of an animation), else by going through the vertices
-        /// (one frame, few points inside)</summary>
+        /// <summary>One frame of a posed animation [frame, bone] (the check's every frame, with trees; one frame shown, without).</summary>
         public Frame Prepare(D3[,] wt, DQ[,] wq, int f, bool plates, bool points, bool trees = true)
         {
-            var fr = new Frame { F = f };
+            int n = wt.GetLength(1);
+            var t = new D3[n];
+            var q = new DQ[n];
+            for (int b = 0; b < n; b++)
+            {
+                t[b] = wt[f, b];
+                q[b] = wq[f, b];
+            }
+            var fr = PrepareStatic(t, q, plates, points, trees);
+            fr.F = f;
+            return fr;
+        }
+
+        public Frame PrepareStatic(D3[] wt, DQ[] wq, bool plates, bool points, bool trees = true)
+        {
+            var fr = new Frame { Wt = wt, Wq = wq };
             if (plates)
-                fr.V = Body.Posed(wt, wq, f);
+            {
+                fr.SV = new D3[Body.StaticV.Length];
+                for (int k = 0; k < Body.StaticV.Length; k++)
+                    fr.SV[k] = Skinned(Body.StaticV[k], wt, wq);
+                if (trees)
+                    fr.STree = new LcKdTree(fr.SV);
+            }
             if (points)
             {
-                (fr.P, fr.N) = Rigid(Body.StaticBones, wt, wq, f);
+                (fr.P, fr.N) = Rigid(Body.StaticBones, wt, wq);
                 if (trees)
                     fr.Tree = new LcKdTree(fr.P);
-                if (Body.MovingBones.Length > 0)
-                {
-                    (fr.PM, fr.NM) = Rigid(Body.MovingBones, wt, wq, f);
-                    if (trees)
-                        fr.TreeM = new LcKdTree(fr.PM);
-                }
             }
             return fr;
+        }
+
+        D3 Skinned(int i, D3[] wt, DQ[] wq)
+        {
+            var p = D3.Zero;
+            for (int k = 0; k < 4; k++)
+            {
+                double ww = Body.W[i * 4 + k];
+                if (ww == 0)
+                    continue;
+                int b = Body.Bi[i * 4 + k];
+                p = p + ww * (wt[b] + wq[b].Rotate(Body.L[i * 4 + k]));
+            }
+            return p;
+        }
+
+        (D3[] p, D3[] n) Rigid(int[] bones, D3[] wt, DQ[] wq)
+        {
+            int count = bones.Sum(b => Body.Rigid[b].v.Length);
+            var p = new D3[count];
+            var n = new D3[count];
+            int k = 0;
+            foreach (int b in bones)
+            {
+                var (v, nn) = Body.Rigid[b];
+                var q = wq[b];
+                var t = wt[b];
+                for (int i = 0; i < v.Length; i++, k++)
+                {
+                    p[k] = t + q.Rotate(v[i]);
+                    n[k] = q.Rotate(nn[i]);
+                }
+            }
+            return (p, n);
+        }
+
+        // the arm's armor, posed on the pose being measured
+        sealed class Moving
+        {
+            public int[] V;                 // vertex ids
+            public D3[] VP;
+            public D3[] P, N;               // rigid vertices of the moving bones
+        }
+
+        Moving PoseMoving(D3[] wt, DQ[] wq, bool plates, bool points, bool fast)
+        {
+            var m = new Moving();
+            if (plates)
+            {
+                m.V = fast ? fastMoving : Body.MovingV;
+                m.VP = new D3[m.V.Length];
+                for (int k = 0; k < m.V.Length; k++)
+                {
+                    int i = m.V[k];
+                    if (fast)
+                    {
+                        int b = Body.Top[i];
+                        m.VP[k] = wt[b] + wq[b].Rotate(Body.L[i * 4 + Body.TopK[i]]);
+                    }
+                    else
+                        m.VP[k] = Skinned(i, wt, wq);
+                }
+            }
+            if (points && Body.MovingBones.Length > 0)
+                (m.P, m.N) = Rigid(Body.MovingBones, wt, wq);
+            return m;
+        }
+
+        /// <summary>The item's crossings at frame fr.F of a posed animation: {body part: depth in m}; hits gets the points to draw.</summary>
+        public Dictionary<string, double> Depths(Frame fr, LcItem item, D3[,] wt, DQ[,] wq, List<LcHit> hits = null) =>
+            DepthsAll(fr, fr.Wt, fr.Wq, new[] { item }, false, hits)[0];
+
+        /// <summary>
+        /// The items' crossings on a pose (armature space, every bone) whose bones off the left arm are the frame's: per item {body part:
+        /// depth in m}. fast: the search's thinned measure.
+        /// </summary>
+        public Dictionary<string, double>[] DepthsAll(Frame fr, D3[] wt, DQ[] wq, IList<LcItem> items, bool fast, List<LcHit> hits = null)
+        {
+            bool plates = items.Any(i => i.Kind == LcItemKind.Plate), points = items.Any(i => i.Kind == LcItemKind.Points);
+            var mv = PoseMoving(wt, wq, plates, points, fast);
+            var res = new Dictionary<string, double>[items.Count];
+            for (int i = 0; i < items.Count; i++)
+                res[i] = items[i].Kind == LcItemKind.Plate ? Plate(fr, mv, items[i], wt, wq, fast, hits) : Points(fr, mv, items[i], wt, wq, fast, hits);
+            return res;
+        }
+
+        Dictionary<string, double> Plate(Frame fr, Moving mv, LcItem it, D3[] wt, DQ[] wq, bool fast, List<LcHit> hits)
+        {
+            var (o, r) = it.World(wt, wq);
+            var mid = o + r * it.Half;
+            int groups = Body.GrpLab.Length;
+            var front = new double[groups];
+            var back = new double[groups];
+            var lookedAt = hits != null ? new List<(D3 p, int v, double dz)>() : null;
+            void Look(D3 pos, int v)
+            {
+                var q = r.TransposeTimes(pos - o);
+                int i = (int)Math.Floor((q.X - it.X0) / LcItem.Bin), j = (int)Math.Floor((q.Y - it.Y0) / LcItem.Bin);
+                if (i < 0 || i >= it.Nx || j < 0 || j >= it.Ny || Math.Abs(q.Z) >= PlateDepthLimit || !it.Mask[i, j])
+                    return;
+                double dz = it.Zf[i, j] - q.Z;          // > 0: in front of the face
+                int g = Body.Grp[v];
+                if (dz > front[g])
+                    front[g] = dz;
+                if (-dz > back[g])
+                    back[g] = -dz;
+                lookedAt?.Add((pos, v, dz));
+            }
+            // the static armor near the plate (the measure's ball query), then the arm's
+            if (fr.STree != null)
+            {
+                var near = new List<int>();
+                fr.STree.Within(mid, it.Radius, near);
+                for (int k = 0; k < near.Count; k += fast ? 2 : 1)
+                    Look(fr.SV[near[k]], Body.StaticV[near[k]]);
+            }
+            else
+            {
+                double rad2 = it.Radius * it.Radius;
+                for (int k = 0; k < fr.SV.Length; k++)
+                    if ((fr.SV[k] - mid).LengthSquared() <= rad2)
+                        Look(fr.SV[k], Body.StaticV[k]);
+            }
+            for (int k = 0; k < mv.V.Length; k++)
+                Look(mv.VP[k], mv.V[k]);
+            var res = new Dictionary<string, double>();
+            for (int g = 0; g < groups; g++)
+            {
+                double cross = Math.Min(front[g], back[g]);
+                if (cross <= 0)
+                    continue;
+                string p = Body.Labels[Body.GrpLab[g]];
+                res[p] = Math.Max(res.TryGetValue(p, out double d) ? d : 0, cross);
+            }
+            if (lookedAt != null)
+                foreach (var (pos, v, dz) in lookedAt)
+                {
+                    int g = Body.Grp[v];
+                    if (dz > 0 && Math.Min(front[g], back[g]) > 0)
+                        hits.Add(new LcHit { P = pos, Depth = dz, Part = Body.Labels[Body.GrpLab[g]], Index = v });
+                }
+            return res;
         }
 
         static (int index, double dist) Nearest(LcKdTree tree, D3[] pts, D3 q)
@@ -159,94 +345,23 @@ namespace DSAnimStudio.LeftClear
             return (best, Math.Sqrt(bd));
         }
 
-        (D3[] p, D3[] n) Rigid(int[] bones, D3[,] wt, DQ[,] wq, int f)
+        Dictionary<string, double> Points(Frame fr, Moving mv, LcItem it, D3[] wt, DQ[] wq, bool fast, List<LcHit> hits)
         {
-            int count = bones.Sum(b => Body.Rigid[b].v.Length);
-            var p = new D3[count];
-            var n = new D3[count];
-            int k = 0;
-            foreach (int b in bones)
-            {
-                var (v, nn) = Body.Rigid[b];
-                var q = wq[f, b];
-                var t = wt[f, b];
-                for (int i = 0; i < v.Length; i++, k++)
-                {
-                    p[k] = t + q.Rotate(v[i]);
-                    n[k] = q.Rotate(nn[i]);
-                }
-            }
-            return (p, n);
-        }
-
-        /// <summary>The item's crossings at one frame: {body part: depth in m}; hits (optional) gets the points to draw.</summary>
-        public Dictionary<string, double> Depths(Frame fr, LcItem item, D3[,] wt, DQ[,] wq, List<LcHit> hits = null) =>
-            item.Kind == LcItemKind.Plate ? Plate(fr, item, wt, wq, hits) : Points(fr, item, wt, wq, hits);
-
-        Dictionary<string, double> Plate(Frame fr, LcItem it, D3[,] wt, DQ[,] wq, List<LcHit> hits)
-        {
-            var (o, r) = it.World(wt, wq, fr.F);
-            var mid = o + r * it.Half;
-            double rad2 = it.Radius * it.Radius;
-            int groups = Body.GrpLab.Length;
-            var front = new double[groups];
-            var back = new double[groups];
-            var lookedAt = new List<(int v, double dz)>();
-            void Look(int v)
-            {
-                var q = r.TransposeTimes(fr.V[v] - o);
-                int i = (int)Math.Floor((q.X - it.X0) / LcItem.Bin), j = (int)Math.Floor((q.Y - it.Y0) / LcItem.Bin);
-                if (i < 0 || i >= it.Nx || j < 0 || j >= it.Ny || Math.Abs(q.Z) >= PlateDepthLimit || !it.Mask[i, j])
-                    return;
-                double dz = it.Zf[i, j] - q.Z;          // > 0: in front of the face
-                int g = Body.Grp[v];
-                if (dz > front[g])
-                    front[g] = dz;
-                if (-dz > back[g])
-                    back[g] = -dz;
-                if (hits != null)
-                    lookedAt.Add((v, dz));
-            }
-            foreach (int v in Body.StaticV)              // the static armor near the plate (the measure's ball query)
-                if ((fr.V[v] - mid).LengthSquared() <= rad2)
-                    Look(v);
-            foreach (int v in Body.MovingV)
-                Look(v);
-            var res = new Dictionary<string, double>();
-            for (int g = 0; g < groups; g++)
-            {
-                double cross = Math.Min(front[g], back[g]);
-                if (cross <= 0)
-                    continue;
-                string p = Body.Labels[Body.GrpLab[g]];
-                res[p] = Math.Max(res.TryGetValue(p, out double d) ? d : 0, cross);
-            }
-            if (hits != null)
-                foreach (var (v, dz) in lookedAt)
-                {
-                    int g = Body.Grp[v];
-                    if (dz > 0 && Math.Min(front[g], back[g]) > 0)
-                        hits.Add(new LcHit { P = fr.V[v], Depth = dz, Part = Body.Labels[Body.GrpLab[g]], Index = v });
-                }
-            return res;
-        }
-
-        Dictionary<string, double> Points(Frame fr, LcItem it, D3[,] wt, DQ[,] wq, List<LcHit> hits)
-        {
-            var (o, r) = it.World(wt, wq, fr.F);
-            int n = it.Points.Length;
+            var (o, r) = it.World(wt, wq);
+            var src = fast ? it.FastPoints : it.Points;
+            int n = src.Length;
             var pts = new D3[n];
             for (int i = 0; i < n; i++)
-                pts[i] = o + r * it.Points[i];
+                pts[i] = o + r * src[i];
             var may = new double[n];
             var who = Enumerable.Repeat(-1, n).ToArray();
             for (int k = 0; k < Body.SolidBones.Count; k++)
             {
                 int b = Body.SolidBones[k];
-                var c = wt[fr.F, b] + wq[fr.F, b].Rotate(Body.SolidCentre[k]);
+                var c = wt[b] + wq[b].Rotate(Body.SolidCentre[k]);
                 double reach = Body.SolidReach[k];
-                var inv = wq[fr.F, b].Conj();
-                var t = wt[fr.F, b];
+                var inv = wq[b].Conj();
+                var t = wt[b];
                 for (int i = 0; i < n; i++)
                 {
                     if ((pts[i] - c).Length() >= reach)
@@ -267,14 +382,14 @@ namespace DSAnimStudio.LeftClear
                 var (k, dist) = Nearest(fr.Tree, fr.P, pts[i]);
                 var near = fr.P[k];
                 var nn = fr.N[k];
-                if (fr.PM != null && fr.PM.Length > 0)
+                if (mv.P != null && mv.P.Length > 0)
                 {
-                    var (k2, d2) = Nearest(fr.TreeM, fr.PM, pts[i]);
+                    var (k2, d2) = Nearest(null, mv.P, pts[i]);
                     if (d2 < dist)
                     {
                         dist = d2;
-                        near = fr.PM[k2];
-                        nn = fr.NM[k2];
+                        near = mv.P[k2];
+                        nn = mv.N[k2];
                     }
                 }
                 bool agrees = D3.Dot(pts[i] - near, nn) < 0;
@@ -300,7 +415,7 @@ namespace DSAnimStudio.LeftClear
                 if (cancelled?.Invoke() == true)
                     return null;
                 var fr = Prepare(wt, wq, f, plates, points);
-                rows[f] = items.Select(it => Depths(fr, it, wt, wq)).ToArray();
+                rows[f] = DepthsAll(fr, fr.Wt, fr.Wq, items, false);
                 progress?.Invoke((f + 1.0) / frames);
             }
             return rows;

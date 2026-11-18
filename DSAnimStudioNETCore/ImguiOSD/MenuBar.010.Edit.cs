@@ -118,6 +118,9 @@ namespace DSAnimStudio.ImguiOSD
                 // ERAnimStudio: the copy with its own hkx, cropped and / or mirrored
                 if (ClickItem(TaeEditor.DuplicateCrop.MenuText, TaeEditor.DuplicateCrop.Enabled(Tae), TaeEditor.DuplicateCrop.Shortcut))
                     TaeEditor.DuplicateCrop.ShowDialog(Tae);
+                // ERAnimStudio: the left arm kept off the body (LeftClear\LeftClearFix.cs)
+                if (ClickItem(LeftClear.LeftClearFix.MenuLabel(Tae), LeftClear.LeftClearFix.Enabled(Tae)))
+                    LeftClear.LeftClearFix.ShowDialog(Tae);
 
                 if (ClickItem("Duplicate Animation Category", Tae.IsFileOpen, "Shift+Insert"))
                     Tae.ShowDialogDuplicateToNewTaeSection(Tae.Proj, Tae.SelectedAnimCategory);
