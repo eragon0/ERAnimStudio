@@ -77,6 +77,7 @@ namespace DSAnimStudio.TaeEditor
             public HctCompressor.Found Hct;
             public NewAnimationContainer Container;
             public bool Mirror;             // left and right swapped; events as they are
+            public bool EaseRoot = true;    // the body started on the character: the root bone's offset moved into the root motion
             public bool Whole => First == null && Last == null;
             public bool Edits => !Whole || Mirror;   // decoded and rewritten (needs Havok Content Tools)
             public bool MoveOriginal;       // the original entry goes to the new ID and the copy takes its place
@@ -151,6 +152,7 @@ namespace DSAnimStudio.TaeEditor
         // the binder picked last, offered first the next time (kept in the config); the mirror and the tab, for the session
         public static string LastBinderName;
         public static bool LastMirror;
+        public static bool LastEaseRoot = true;
         public static zzz_DocumentIns LastTabDocument;
 
         /// <summary>
@@ -302,7 +304,8 @@ namespace DSAnimStudio.TaeEditor
 
         // the checks before anything is written; null when the request can go ahead
         public static string Check(TaeEditorScreen tae, DSAProj.Animation source, string target, string first, string last, out Request req,
-                                   bool mirror = false, TaeEditorScreen dest = null, bool move = false, string binder = null)
+                                   bool mirror = false, TaeEditorScreen dest = null, bool move = false, string binder = null,
+                                   bool easeRoot = true)
         {
             req = null;
             dest ??= tae;
@@ -379,7 +382,7 @@ namespace DSAnimStudio.TaeEditor
             {
                 Tae = tae, Dest = dest, Source = source, SourceId = source.SplitID, Target = id, First = f0, Last = f1, Binder = binder,
                 SourceHkx = hkx, SourceBytes = bytes.HkxBytes, SourceCompendium = bytes.CompendiumBytes, Skeleton = skeleton, Hct = hct,
-                Container = dc, Mirror = mirror, MoveOriginal = move,
+                Container = dc, Mirror = mirror, MoveOriginal = move, EaseRoot = easeRoot,
                 OwnHkx = hkx.CategoryID == source.SplitID.CategoryID && hkx.SubID == source.SplitID.SubID,
             };
             return null;
@@ -432,7 +435,7 @@ namespace DSAnimStudio.TaeEditor
                 {
                     var w = new Written();
                     w.Hkx = r.Edits
-                        ? HkxEditPipeline.Make(r.SourceBytes, r.SourceCompendium, r.Skeleton, r.First, r.Last, r.Mirror, r.Hct, out w.Edit)
+                        ? HkxEditPipeline.Make(r.SourceBytes, r.SourceCompendium, r.Skeleton, r.First, r.Last, r.Mirror, r.Hct, out w.Edit, r.EaseRoot)
                         : r.SourceBytes;
                     w.Binder = HkxBinderWriter.Add(r.Binder, w.Hkx, name, moveTo, r.SourceBytes);
                     Main.WinForm.Invoke(new Action(() =>
@@ -504,6 +507,8 @@ namespace DSAnimStudio.TaeEditor
             tae.SelectNewAnimRef(category, anim, false, false, -1f, false, false);
             if (r.Mirror)
                 range += " mirrored,";
+            if (w.Edit?.Eased == true)
+                range += $" body started on the character ({w.Edit.EasedOffset * 100:0} cm into the root motion),";
             string text = $"Duplicated to {r.Target.GetFormattedIDString(proj, null)}{(r.OtherTab ? " in the tab " + TabName(tae) : "")}:{range} {name}.hkx written into {r.Binder}";
             if (!r.Whole)
                 text += $"; events: {kept} kept, {dropped} dropped";
@@ -551,6 +556,8 @@ namespace DSAnimStudio.TaeEditor
             }
             if (r.Mirror)
                 range += " mirrored,";
+            if (w.Edit?.Eased == true)
+                range += $" body started on the character ({w.Edit.EasedOffset * 100:0} cm into the root motion),";
             // the original to T (the editor's own ID change: out of its category, into T's, sorted)
             proj.SAFE_RegistAnimationIDChange(original, s, t);
             if (originalHeader is TAE.Animation.AnimFileHeader.Standard oh)
@@ -696,7 +703,7 @@ namespace DSAnimStudio.TaeEditor
         readonly TaeEditorScreen tae;
         readonly DSAProj.Animation source;
         string target = "", first = "", last = "", error;
-        bool mirror;
+        bool mirror, easeRoot = true;
         int mode;   // 0: copy to a new ID; 1: move the original to the new ID, the copy stays at its ID
         readonly string sourceText;
         readonly int? sourceLast;
@@ -731,6 +738,7 @@ namespace DSAnimStudio.TaeEditor
                          + (sourceLast != null ? $", frames 0-{sourceLast}" : "");
             hctFound = HkxEdit.HctCompressor.Find(out hctWhy) != null;
             mirror = DuplicateCrop.LastMirror;
+            easeRoot = DuplicateCrop.LastEaseRoot;
             tabs.Add(tae);
             tabs.AddRange(zzz_DocumentManager.GetOpenFileDocuments().Select(d => d.EditorScreen).Where(s => s != tae));
             tabNames = tabs.Select(s => DuplicateCrop.TabName(s) + (s == tae ? " (this tab)" : "")).ToArray();
@@ -828,6 +836,15 @@ namespace DSAnimStudio.TaeEditor
 
             Label("Mirror", column);
             ImGui.Checkbox("Swap left and right##DuplicateCrop.Mirror", ref mirror);
+            // the root bone's offset at the first frame moved into the root motion (on by default)
+            Label("Body", column);
+            ImGui.Checkbox("Start it on the character##DuplicateCrop.EaseRoot", ref easeRoot);
+            Help("A crop starting mid-animation begins with the body wherever the root bone (Master) was at that frame, sometimes\n"
+                 + "10-40 cm off the character. Ticked, that sideways offset goes into the root motion and is handed back to the root\n"
+                 + "bone over the animation: the body moves exactly as before, starts on the character, and ends where the source has it;\n"
+                 + "the character's travel changes by that offset. The root bone's turn (the body twisting through a swing) is left alone.\n\n"
+                 + "Untick it for grabs, throws and critical attacks, where the body has to stay where it is relative to the character.\n"
+                 + "Crops and mirrors only; a whole copy is never changed.");
             Help("The hkx mirrored after the crop: each bone takes its left / right twin's pose, the root motion's sideways\n"
                  + "drift and turn flip. The events stay as they are (an effect on the right hand stays on the right hand).");
             ImGui.Separator();
@@ -872,11 +889,12 @@ namespace DSAnimStudio.TaeEditor
             bool ready = look.Problem == null;
             if (Tools.SimpleClickButton("Accept", ready) || (ready && IsEnterKeyRequested))
             {
-                error = DuplicateCrop.Check(tae, source, target, first, last, out var req, mirror, tabs[tab], move, binder);
+                error = DuplicateCrop.Check(tae, source, target, first, last, out var req, mirror, tabs[tab], move, binder, easeRoot);
                 if (error == null)
                 {
                     DuplicateCrop.LastBinderName = Path.GetFileName(binder);
                     DuplicateCrop.LastMirror = mirror;
+                    DuplicateCrop.LastEaseRoot = easeRoot;
                     DuplicateCrop.LastTabDocument = tabs[tab].ParentDocument;
                     Dismiss();
                     DuplicateCrop.Start(req, new DuplicateCropUi());

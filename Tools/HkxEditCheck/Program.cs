@@ -47,6 +47,48 @@ try
             Console.WriteLine($"  {fl.Name} @{fl.ByteOffset} flags {(int)fl.Flags} {fl.Type?.Name}");
         return 0;
     }
+    if (cmd == "ease")   // a crop with and without the body eased onto the character, compared in world space
+    {
+        var sk = Skeleton(args2[1]);
+        var hct = HctCompressor.Find(out string why) ?? throw new Exception(why);
+        int? f0 = int.Parse(args2[2]), f1 = args2.Count > 3 ? int.Parse(args2[3]) : null;
+        bool mir = Flag(args2, "--mirror");
+        byte[] src = File.ReadAllBytes(args2[0]);
+        var plain = HkxAnimationFile.Read(HkxEditPipeline.Make(src, compBytes, sk, f0, f1, mir, hct, out _, easeRoot: false)).Decoded;
+        var eased = HkxAnimationFile.Read(HkxEditPipeline.Make(src, compBytes, sk, f0, f1, mir, hct, out var rep, easeRoot: true)).Decoded;
+        // world positions of every bone: the root motion (a move, then a turn about up) applied to the armature-space pose
+        System.Numerics.Vector3[,] World(HkxAnimation a)
+        {
+            var (wt, _) = sk.ToWorld(sk.FullPose(a).t, sk.FullPose(a).q);
+            var w = new System.Numerics.Vector3[a.Frames, sk.Count];
+            for (int f = 0; f < a.Frames; f++)
+            {
+                var r = a.Root?[f] ?? System.Numerics.Vector4.Zero;
+                var q = System.Numerics.Quaternion.CreateFromAxisAngle(System.Numerics.Vector3.UnitY, r.W);
+                for (int b = 0; b < sk.Count; b++)
+                    w[f, b] = new System.Numerics.Vector3(r.X, r.Y, r.Z) + System.Numerics.Vector3.Transform(wt[f, b], q);
+            }
+            return w;
+        }
+        var wp = World(plain);
+        var we = World(eased);
+        int pelvis = sk.Index["Pelvis"], master = Array.FindIndex(sk.Parents, p => p < 0);
+        // rigid motion: every distance from the first frame's pelvis is the same in both
+        double rigid = 0;
+        for (int f = 0; f < plain.Frames; f++)
+            for (int b = 0; b < sk.Count; b++)
+                rigid = Math.Max(rigid, Math.Abs((wp[f, b] - wp[0, pelvis]).Length() - (we[f, b] - we[0, pelvis]).Length()));
+        int km = Array.IndexOf(eased.Bones, (short)master), kp = Array.IndexOf(plain.Bones, (short)master);
+        var start = eased.T[0, km];
+        var endE = eased.T[eased.Frames - 1, km];
+        var endP = plain.T[plain.Frames - 1, kp];
+        Console.WriteLine($"moved into the root motion: {rep.EasedOffset * 100:0.0} cm (the root bone's turn of {rep.EasedTurn:0.0} deg left with it)");
+        Console.WriteLine($"root bone at the first frame: plain {new System.Numerics.Vector2(plain.T[0, kp].X, plain.T[0, kp].Z).Length() * 100:0.0} cm off, eased {new System.Numerics.Vector2(start.X, start.Z).Length() * 100:0.0} cm off");
+        Console.WriteLine($"root bone at the last frame, eased against plain: {(endE - endP).Length() * 100:0.00} cm apart");
+        Console.WriteLine($"root motion at the first frame, eased: {eased.Root[0]}; at the last frame: plain {plain.Root[^1]}, eased {eased.Root[^1]}");
+        Console.WriteLine($"body motion rigid between the two (largest change of a distance): {rigid * 1000:0.0} mm");
+        return 0;
+    }
     if (cmd == "objects")   // the root's variants and the classes reachable from it
     {
         var root = Havoc.IO.Tagfile.Binary.HkBinaryTagfileReader.Read(File.ReadAllBytes(args2[0]), compBytes);

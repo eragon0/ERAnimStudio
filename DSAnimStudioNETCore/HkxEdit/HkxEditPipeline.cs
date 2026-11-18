@@ -22,6 +22,9 @@ namespace DSAnimStudio.HkxEdit
             public int SourceFrames, Frames;
             public bool Mirrored;
             public double ReadBackError;       // metres, the largest bone position difference after compression
+            public bool Eased;                 // the body started on the character (EaseRootOntoCharacter)
+            public double EasedOffset;         // metres moved into the root motion
+            public double EasedTurn;           // the root bone's turn at the first frame, degrees (left with the root bone)
             public int Bytes;
             public string HctVersion;
         }
@@ -34,7 +37,7 @@ namespace DSAnimStudio.HkxEdit
         /// Needs Havok Content Tools 2018.1: <see cref="HctCompressor.Find"/>.
         /// </summary>
         public static byte[] Make(byte[] source, byte[] compendium, HkxSkeleton skeleton, int? first, int? last, bool mirror,
-                                  HctCompressor.Found hct, out Report report)
+                                  HctCompressor.Found hct, out Report report, bool easeRoot = true)
         {
             if (hct == null)
                 throw new HkxEditRefused("a crop or a mirror needs Havok Content Tools " + HctCompressor.RequiredVersion);
@@ -62,6 +65,10 @@ namespace DSAnimStudio.HkxEdit
             var b2 = (ff == 0 && fl == a.Frames - 1) ? a : HkxAnimationOps.Crop(a, ff, fl);
             if (mirror)
                 b2 = HkxAnimationOps.Mirror(skeleton, b2);
+            // the body started on the character: the root bone's offset at the first frame moved into the root motion
+            double easedOffset = 0, easedTurn = 0;
+            if (easeRoot)
+                b2 = HkxAnimationOps.EaseRootOntoCharacter(skeleton, b2, out easedOffset, out easedTurn);
             var names = b2.Bones.Select(k => skeleton.Names[k]).ToList();
             byte[] uncompressed = HkxInterleavedWriter.Write(file, b2, names);
             string work = HctCompressor.ScratchFolder();
@@ -98,6 +105,7 @@ namespace DSAnimStudio.HkxEdit
             {
                 First = f0, Last = f1, FileFirst = ff, FileLast = fl, Fps = fps, SourceFrames = a.Frames, Frames = b2.Frames,
                 Mirrored = mirror, ReadBackError = err, Bytes = compressed.Length, HctVersion = hct.Version,
+                Eased = easeRoot && easedOffset > 0, EasedOffset = easedOffset, EasedTurn = easedTurn,
             };
             return compressed;
         }

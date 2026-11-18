@@ -229,7 +229,8 @@ namespace DSAnimStudio.TaeEditor
                         Note($"  dialog: binder offered first {Path.GetFileName(binders.Count > 0 ? binders[DuplicateCrop.DefaultBinder(dest, binders)] : "none")}");
                         string err = DuplicateCrop.Check(tae, sel, Str(c, "target"), Str(c, "first"), Str(c, "last"), out var req,
                                                          c.TryGetProperty("mirror", out var mv) && mv.GetBoolean(), dest,
-                                                         c.TryGetProperty("move", out var mo) && mo.GetBoolean(), binder);
+                                                         c.TryGetProperty("move", out var mo) && mo.GetBoolean(), binder,
+                                                         !c.TryGetProperty("ease", out var ev) || ev.GetBoolean());
                         if (err != null)
                         {
                             Note("  refused by the check: " + err);

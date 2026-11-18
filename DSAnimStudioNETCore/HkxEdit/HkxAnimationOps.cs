@@ -48,6 +48,84 @@ namespace DSAnimStudio.HkxEdit
             return b;
         }
 
+        // a turn about up and a move: the kind of transform root motion samples describe (x, y, z, turn)
+        readonly struct Planar
+        {
+            public readonly Vector3 T;
+            public readonly double Yaw;
+            public Planar(Vector3 t, double yaw) { T = t; Yaw = yaw; }
+            public static Planar Identity => new Planar(Vector3.Zero, 0);
+            public Quaternion Q => Quaternion.CreateFromAxisAngle(Vector3.UnitY, (float)Yaw);
+            public Planar Then(Planar b) => new Planar(T + Vector3.Transform(b.T, Q), Yaw + b.Yaw);   // this, then b in this one's frame
+            public Planar Inverse() => new Planar(-Vector3.Transform(T, Quaternion.CreateFromAxisAngle(Vector3.UnitY, (float)-Yaw)), -Yaw);
+        }
+
+        // the turn about up a rotation adds to a reference rotation (its twist about Y, measured in world space)
+        static double YawFrom(Quaternion q, Quaternion reference)
+        {
+            var d = q * Quaternion.Conjugate(reference);
+            double yaw = 2 * Math.Atan2(d.Y, d.W);
+            // into -180..180 degrees (q and -q are the same rotation)
+            while (yaw > Math.PI) yaw -= 2 * Math.PI;
+            while (yaw <= -Math.PI) yaw += 2 * Math.PI;
+            return yaw;
+        }
+
+        /// <summary>
+        /// The body started on the character: the root bone's (Master's) sideways offset from the character at the first frame is moved
+        /// into the root motion, and handed back to the root bone over the animation (smoothly, back to the source's own by the last
+        /// frame). The body moves exactly as before, only placed so it starts on the character; the root motion absorbs the difference,
+        /// so its travel changes by that offset. The root bone's turn is left as it is: in attacks it is the body twisting through the
+        /// swing (often 30-50 degrees at a frame mid-swing), and moving it into the root motion would turn the whole attack's direction
+        /// away from where the character faces. Needs root motion and the root bone among the tracks; returns the offset moved (metres,
+        /// 0 when there was nothing to do) and the root bone's turn at the first frame (degrees, for the report, not moved).
+        /// </summary>
+        public static HkxAnimation EaseRootOntoCharacter(HkxSkeleton sk, HkxAnimation a, out double offset, out double turnDegrees)
+        {
+            offset = 0;
+            turnDegrees = 0;
+            int root = Array.FindIndex(sk.Parents, p => p < 0);
+            int k = Array.IndexOf(a.Bones, (short)root);
+            if (a.Root == null || root < 0 || k < 0 || a.Frames < 2)
+                return a;
+            var m0 = a.T[0, k];
+            double yaw0 = YawFrom(a.Q[0, k], sk.Q[root]);
+            offset = new Vector2(m0.X, m0.Z).Length();
+            turnDegrees = Math.Abs(yaw0 * 180 / Math.PI);
+            if (offset < 1e-4)
+            {
+                offset = 0;
+                return a;
+            }
+            // C(t) carries the correction: C0 at the first frame (the sideways offset), easing to nothing by the last.
+            // Root motion' = C0^-1 . RM(t) . C(t), root bone' = C(t)^-1 . root bone(t): at the first frame the root motion stays at the
+            // origin and the root bone loses its offset; the body's world motion becomes C0^-1 . source, the source's moved as a whole
+            yaw0 = 0;   // the turn stays with the root bone (see above)
+            var c0 = new Planar(new Vector3(m0.X, 0, m0.Z), 0);
+            var c0Inv = c0.Inverse();
+            var b = new HkxAnimation(a.Bones.ToArray(), a.Frames)
+            {
+                Duration = a.Duration, SkeletonName = a.SkeletonName, BlendHint = a.BlendHint, Root = new Vector4[a.Frames],
+            };
+            Array.Copy(a.T, b.T, a.T.Length);
+            Array.Copy(a.Q, b.Q, a.Q.Length);
+            Array.Copy(a.S, b.S, a.S.Length);
+            for (int f = 0; f < a.Frames; f++)
+            {
+                double s = (double)f / (a.Frames - 1);
+                double keep = 1 - s * s * (3 - 2 * s);   // smoothstep: 1 at the first frame, 0 at the last
+                var c = new Planar(new Vector3(m0.X, 0, m0.Z) * (float)keep, 0).Then(new Planar(Vector3.Zero, yaw0 * keep));
+                var r = a.Root[f];
+                var rm = c0Inv.Then(new Planar(new Vector3(r.X, r.Y, r.Z), r.W)).Then(c);
+                b.Root[f] = new Vector4(rm.T, (float)rm.Yaw);
+                var cInv = c.Inverse();
+                b.T[f, k] = cInv.T + Vector3.Transform(a.T[f, k], cInv.Q);
+                b.Q[f, k] = Quaternion.Normalize(cInv.Q * a.Q[f, k]);
+            }
+            b.MakeQuaternionsContinuous();
+            return b;
+        }
+
         /// <summary>Each bone's left / right twin by name (L_ and R_), itself when it has none.</summary>
         public static int[] Twins(HkxSkeleton sk)
         {
