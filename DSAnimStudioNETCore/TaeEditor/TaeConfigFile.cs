@@ -251,6 +251,8 @@ namespace DSAnimStudio.TaeEditor
         public string HavokContentToolsPath = "";
         // ERAnimStudio: the split binder New Animation from Current wrote into last, offered first
         public string DuplicateCropLastBinder = "";
+        // ERAnimStudio: Animation > Left Item Check (LeftClear\LeftItemCheck.cs)
+        public bool LeftItemCheck = false;
 
         public SapImportConfigs.ImportConfigFlver2 LastUsedImportConfig_FLVER2 
             = new SapImportConfigs.ImportConfigFlver2();

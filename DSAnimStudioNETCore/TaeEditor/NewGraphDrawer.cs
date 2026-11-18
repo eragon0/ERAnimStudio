@@ -776,7 +776,11 @@ namespace DSAnimStudio.TaeEditor
                     // transparent non-wrapped playback cursor
                     float playbackCursorX = (float)((Graph.PlaybackCursor.GUICurrentTime * Layout.SecondsPixelSize) - Graph.ScrollViewer.RoundedScroll.X);
                     playbackCursorX = (float)Math.Round(playbackCursorX);
-                    
+
+                    // ERAnimStudio: the left item check's strip under the frame numbers, under the cursor
+                    if (!Graph.IsGhostGraph)
+                        LeftClear.LeftItemCheck.DrawStrip(Graph, viewportRect);
+
                     ImGuiDebugDrawer.DrawLine(new Vector2(playbackCursorStartX, 0), new Vector2(playbackCursorStartX, Graph.Rect.Height), Main.Config.Colors.GuiColorActionGraphPlaybackStartTime_V2);
                     ImGuiDebugDrawer.DrawLine(new Vector2(playbackCursorModX, 0), new Vector2(playbackCursorModX, Graph.Rect.Height), Main.Config.Colors.GuiColorActionGraphPlaybackCursor_V3);
 

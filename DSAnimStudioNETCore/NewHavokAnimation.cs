@@ -80,7 +80,8 @@ namespace DSAnimStudio
             }
             else
             {
-                result = new NewHavokAnimation(anim.Data, anim.FileSize)
+                // ERAnimStudio: the root motion it plays, which a mirrored animation has of its own (LeftClear\MirrorPlayback.cs)
+                result = new NewHavokAnimation(anim.Data, anim.FileSize, anim.RootMotion?.Data)
                     { IsUpperBody = upperBodyAnim };
             }
 
@@ -359,6 +360,14 @@ namespace DSAnimStudio
 
             RootMotion = new RootMotionDataPlayer(data.RootMotion);
 
+            FileSize = fileSize;
+        }
+
+        // ERAnimStudio: an animation whose root motion isn't its data's own (a mirrored one: LeftClear\MirrorPlayback.cs)
+        public NewHavokAnimation(HavokAnimationData data, int fileSize, RootMotionData rootMotion)
+        {
+            this.Data = data;
+            RootMotion = new RootMotionDataPlayer(rootMotion);
             FileSize = fileSize;
         }
 

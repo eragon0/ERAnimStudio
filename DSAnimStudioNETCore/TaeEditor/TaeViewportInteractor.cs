@@ -1922,6 +1922,9 @@ namespace DSAnimStudio.TaeEditor
                 }
             }
 
+            // ERAnimStudio: Play Mirrored and the left item check (LeftClear\LeftItemCheck.cs)
+            LeftClear.LeftItemCheck.AppendStatus(printer, Graph?.MainScreen, type is TaeConfigFile.ViewportStatusTypes.Full);
+
             return printer;
         }
 

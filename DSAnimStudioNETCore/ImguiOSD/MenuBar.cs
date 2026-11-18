@@ -41,6 +41,7 @@ namespace DSAnimStudio.ImguiOSD
         {
 #if DUPLICATECROP_SELFTEST
             TaeEditor.DuplicateCropSelfTest.Frame();
+            LeftClear.LeftItemCheckSelfTest.Frame();
 #endif
             bool anyItemFocusedInner = false;
             bool isAnyMenuExpanded = false;

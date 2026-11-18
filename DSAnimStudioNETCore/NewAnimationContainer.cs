@@ -141,6 +141,9 @@ namespace DSAnimStudio
                     if (result != null)
                     {
                         result.TaeAnimation = taeAnimActionSrc;
+                        // ERAnimStudio: an entry marked 'Play Mirrored' plays as a mirrored behavior clip does
+                        if (LeftClear.MirrorPlayback.IsMirrored(Proj, request.TaeAnimID))
+                            result = LeftClear.MirrorPlayback.Wrap(result);
                     }
 
                     return result;

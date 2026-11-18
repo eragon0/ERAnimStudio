@@ -274,7 +274,7 @@ namespace DSAnimStudio
         {
 #if DUPLICATECROP_SELFTEST
             // the self-test runs in a window without focus, where the credits screen waits for a click forever
-            if (TaeEditor.DuplicateCropSelfTest.Active)
+            if (TaeEditor.DuplicateCropSelfTest.Active || LeftClear.LeftItemCheckSelfTest.Active)
                 SplashDismissed = true;
 #endif
             if (SplashState == SplashScreenStates.FadeIn)

@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- A console check of the editor's left-hand clearance measure (DSAnimStudioNETCore\LeftClear), outside the editor: the same
+       source files, run on files given on the command line. Not part of the release. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <NoWarn>CS8632</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\..\DSAnimStudioNETCore\HkxEdit\*.cs" Link="HkxEdit\%(Filename)%(Extension)" />
+    <EmbeddedResource Include="..\..\DSAnimStudioNETCore\HkxEdit\HctSplineCompress.hko" Link="HkxEdit\HctSplineCompress.hko" />
+    <Compile Include="..\..\DSAnimStudioNETCore\LeftClear\Lc*.cs" Link="LeftClear\%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\SoulsAssetPipeline\SoulsAssetPipeline\SoulsAssetPipeline.csproj" />
+    <ProjectReference Include="..\..\SoulsAssetPipeline\SoulsFormats\SoulsFormats.csproj" />
+    <ProjectReference Include="..\..\SoulsAssetPipeline\Havoc\Havoc.csproj" />
+  </ItemGroup>
+
+</Project>

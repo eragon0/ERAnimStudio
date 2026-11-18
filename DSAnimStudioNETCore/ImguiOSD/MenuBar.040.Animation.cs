@@ -18,6 +18,11 @@ namespace DSAnimStudio.ImguiOSD
             {
                 isAnyMenuExpanded = true;
 
+                // ERAnimStudio: Play Mirrored and Left Item Check (LeftClear\LeftItemCheck.cs)
+                LeftClear.LeftItemCheck.BuildMenu(Tae);
+
+                ImGui.Separator();
+
                 Tae.Config.LockFramerateToOriginalAnimFramerate = Checkbox(
                     "Lock Cursor to Frame Rate Defined in HKX", Tae.Config.LockFramerateToOriginalAnimFramerate,
                     shortcut: Tae.PlaybackCursor != null

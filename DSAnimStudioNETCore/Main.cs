@@ -2872,6 +2872,16 @@ namespace DSAnimStudio
                             Main.HandleError(nameof(Main.EnableErrorHandler.ViewportStatusDisplay), handled_ex);
                         }
 
+                        // ERAnimStudio: where the left item crosses the body at the frame shown (LeftClear\LeftItemCheck.cs)
+                        try
+                        {
+                            LeftClear.LeftItemCheck.DrawViewport(TAE_EDITOR);
+                        }
+                        catch (Exception handled_ex) when (Main.EnableErrorHandler.ViewportStatusDisplay)
+                        {
+                            Main.HandleError(nameof(Main.EnableErrorHandler.ViewportStatusDisplay), handled_ex);
+                        }
+
                         DrawMemoryUsage();
 
                         zzz_DocumentManager.CurrentDocument.LoadingTaskMan.DrawAllTasks();

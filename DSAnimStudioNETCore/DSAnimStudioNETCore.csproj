@@ -30,8 +30,9 @@
     <DefineConstants>$(DefineConstants)TRACE</DefineConstants>
   </PropertyGroup>
 
-  <!-- ERAnimStudio: the in-app test of Duplicate Animation (Crop) (TaeEditor\DuplicateCropSelfTest.cs), only in a build made with
-       -p:DuplicateCropSelfTest=true; never in a release. After the groups above, which append TRACE without a separator -->
+  <!-- ERAnimStudio: the in-app tests of Duplicate Animation (Crop) (TaeEditor\DuplicateCropSelfTest.cs) and of the left item check
+       (LeftClear\LeftItemCheckSelfTest.cs), only in a build made with -p:DuplicateCropSelfTest=true; never in a release. After the
+       groups above, which append TRACE without a separator -->
   <PropertyGroup Condition="'$(DuplicateCropSelfTest)'=='true'">
     <DefineConstants>$(DefineConstants);DUPLICATECROP_SELFTEST</DefineConstants>
   </PropertyGroup>
