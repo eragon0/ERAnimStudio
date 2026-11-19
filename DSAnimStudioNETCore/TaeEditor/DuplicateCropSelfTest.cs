@@ -159,7 +159,11 @@ namespace DSAnimStudio.TaeEditor
                         return;
                     }
                     foreach (var t in tabs)
+                    {
                         Note($"tab '{DuplicateCrop.TabName(t.EditorScreen)}': {t.EditorScreen.NewFileContainerName}; mod folder {t.GameData.ModengineRootPath}; game folder {t.GameData.InterrootPath}");
+                        var open = t.EditorScreen.FileContainer.AllTAE.Where(c => c.IsTreeNodeOpen).Select(c => $"a{c.CategoryID:D3} '{c.Info.DisplayName}'").ToList();
+                        Note($"  TAEs open after the load (Start with all TAEs collapsed {(Main.Config.AutoCollapseAllTaeSections ? "on" : "off")}): {(open.Count == 0 ? "none" : string.Join(", ", open))}");
+                    }
                     Note(DuplicateCrop.HctStatus(out _));
                     stage = 2;
                     waitUntil = frames + 120;

@@ -1413,6 +1413,8 @@ namespace DSAnimStudio.TaeEditor
             //    TaeInterop.OnLoadANIBND(MenuBar, progress);
             //}
             ApplyAlreadySetTAETemplate();
+            // ERAnimStudio: with Start with all TAEs collapsed, selecting the first animation on load doesn't open its TAE
+            KeepTaeClosedForLoadSelection = Main.Config.AutoCollapseAllTaeSections ? SelectedAnimCategory.SAFE_GetAnimByIndex(0) : null;
             SelectNewAnimRef(SelectedAnimCategory, SelectedAnimCategory.SAFE_GetAnimByIndex(0));
             
             RecreateAnimList();
@@ -2753,10 +2755,18 @@ namespace DSAnimStudio.TaeEditor
            
         }
 
+        // ERAnimStudio: the animation the load selects while Start with all TAEs collapsed is on; its selection (and the
+        // re-selection once its model has loaded) doesn't scroll the list to it, which would open its TAE. Any other
+        // selection, or one the user makes (pushed to the history), clears it.
+        private DSAProj.Animation KeepTaeClosedForLoadSelection = null;
+
         public void SelectNewAnimRef(DSAProj.AnimCategory category, DSAProj.Animation animRef, bool scrollOnCenter = false, 
             bool doNotCommitToGraph = false, float startFrameOverride = -1, bool isPushCurrentToHistBackwardStack = false,
             bool disableHkxSelect = false)
         {
+            if (KeepTaeClosedForLoadSelection != null && (animRef != KeepTaeClosedForLoadSelection || isPushCurrentToHistBackwardStack))
+                KeepTaeClosedForLoadSelection = null;
+
             AnimSwitchRenderCooldown = 1;
 
             if (isPushCurrentToHistBackwardStack && animRef != null)
@@ -2844,7 +2854,8 @@ namespace DSAnimStudio.TaeEditor
                     HasntSelectedAnAnimYetAfterBuildingAnimList = false;
                 }
 
-                ParentDocument.SpWindowAnimations.ScrollToAnimRef(SelectedAnimCategory, SelectedAnim, scrollOnCenter);
+                if (KeepTaeClosedForLoadSelection == null)   // ERAnimStudio: see KeepTaeClosedForLoadSelection
+                    ParentDocument.SpWindowAnimations.ScrollToAnimRef(SelectedAnimCategory, SelectedAnim, scrollOnCenter);
 
                 ParentDocument.LoadingTaskMan.DoLoadingTask("TaeEditorScreen_WaitForModelLoad", "Loading animation...", prog =>
                 {
