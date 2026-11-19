@@ -1,6 +1,7 @@
 // ERAnimStudio: 'New Animation from Current...' in the Edit menu, after 'Duplicate Animation' (Ctrl+Insert): the current animation
 // duplicated to a new ID together with its hkx, both cropped to a frame range when one is given.
-//   - Frames are the editor's, 30 a second, as the timeline shows them. No first and no last frame: no crop, a copy of the entry and
+//   - Frames are 60 a second, whatever the file's rate (a 30 fps file's frame N is frame 2N); a crop on an odd frame of a 30 fps file
+//     is sampled from its curves and written at 60 fps (HkxEditPipeline). No first and no last frame: no crop, a copy of the entry and
 //     of its hkx at the new ID. A first and / or a last frame (a missing one is the source's first / last): the hkx is cut to those
 //     frames and the events with it.
 //   - Elden Ring projects only: the hkx it writes are Havok 2018.1, Elden Ring's.
@@ -55,7 +56,8 @@ namespace DSAnimStudio.TaeEditor
     {
         public const string MenuText = "New Animation from Current...";
         public const string Shortcut = "Ctrl+Insert";
-        const double Fps = HkxEditPipeline.EditorFps;
+        // every frame the tool reads and shows is a 60 fps frame (a 30 fps file's frame N is frame 2N here)
+        public const double Fps = 60.0;
         const double Eps = 0.0005;          // seconds: well under a frame
         static volatile bool busy;
         public static bool Busy => busy;
@@ -440,7 +442,9 @@ namespace DSAnimStudio.TaeEditor
         {
             if (r.Build != null)
                 return $" {WhatOf(r)},";
-            string range = r.Whole ? "" : $" frames {w.Edit.First}-{w.Edit.Last},";
+            string range = r.Whole ? "" : $" frames {w.Edit.First}-{w.Edit.Last} at 60 fps,";
+            if (w.Edit?.Resampled == true)
+                range += $" sampled between the source's {w.Edit.Fps:0} fps frames, so the new hkx plays at {w.Edit.OutFps:0} fps,";
             if (r.Mirror)
                 range += " mirrored,";
             if (w.Edit?.Eased == true)
@@ -468,7 +472,7 @@ namespace DSAnimStudio.TaeEditor
                         (w.Hkx, w.Note) = r.Build();
                     else
                         w.Hkx = r.Edits
-                            ? HkxEditPipeline.Make(r.SourceBytes, r.SourceCompendium, r.Skeleton, r.First, r.Last, r.Mirror, r.Hct, out w.Edit, r.EaseRoot)
+                            ? HkxEditPipeline.Make(r.SourceBytes, r.SourceCompendium, r.Skeleton, r.First, r.Last, r.Mirror, r.Hct, out w.Edit, r.EaseRoot, Fps)
                             : r.SourceBytes;
                     w.Binder = HkxBinderWriter.Add(r.Binder, w.Hkx, name, moveTo, r.SourceBytes);
                     Main.WinForm.Invoke(new Action(() =>
@@ -711,7 +715,7 @@ namespace DSAnimStudio.TaeEditor
             return (true, Snap(Math.Max(start - t0, 0)), Snap(end - t0));
         }
 
-        // back on the 30 fps grid when the time was on it (float subtraction leaves 0.20000002)
+        // back on the 60 fps grid (which holds the 30 fps one) when the time was on it (float subtraction leaves 0.20000002)
         static float Snap(double t)
         {
             double f = t * Fps;
@@ -797,7 +801,7 @@ namespace DSAnimStudio.TaeEditor
         int? Playhead()
         {
             var cursor = tae.Graph?.PlaybackCursor;
-            return cursor == null ? null : (int)Math.Round(cursor.GUICurrentTimeMod * 30.0);
+            return cursor == null ? null : (int)Math.Round(cursor.GUICurrentTimeMod * DuplicateCrop.Fps);
         }
 
         protected override void BuildInsideOfWindow()
@@ -852,8 +856,10 @@ namespace DSAnimStudio.TaeEditor
             ImGui.SameLine();
             if (Tools.SimpleClickButton("Playhead##DuplicateCrop.Last", Playhead() != null))
                 last = Playhead()?.ToString() ?? last;
-            Help("Frames at 30 fps, as the timeline shows them; 'Playhead' takes the timeline's current frame.\n"
-                 + "Both empty: a whole copy, no crop. One empty: the source's first or last frame.\n\n"
+            Help("Frames at 60 fps (Graph > Snap Actions To Framerate > 60 FPS counts the timeline in them); 'Playhead' takes the timeline's\n"
+                 + "current frame. Both empty: a whole copy, no crop. One empty: the source's first or last frame.\n"
+                 + "On a 30 fps file an odd frame falls between two of the file's: the crop is then sampled from the file's own\n"
+                 + "curves at 60 fps, and the new hkx plays at 60 fps.\n\n"
                  + "The events are cropped with the frames: an event wholly outside the range is dropped, one running over the\n"
                  + "first frame starts at 0, one running past the last frame keeps its end, and all move back by the first frame.");
 

@@ -1,7 +1,8 @@
 // HkxEditCheck: the editor's hkx editing run on files, for checking it outside the editor.
 //   HkxEditCheck edit <source.hkx> <Skeleton.hkx> <out.hkx> [--first N] [--last N] [--mirror] [--compendium <file>] [--uncompressed <file>]
-//     frames are the editor's (30 fps); the output is the spline-compressed file Havok Content Tools 2018.1 writes
+//     frames are 60 fps frames, as the editor's New Animation from Current takes them; the output is the spline-compressed file Havok Content Tools 2018.1 writes
 //   HkxEditCheck decode <hkx> [--compendium <file>]    prints frames, tracks, duration, root motion and the animation's type
+//   HkxEditCheck sample <hkx> <Skeleton.hkx> [--compendium <file>]    sampling between frames checked against the decoded frames
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -47,6 +48,37 @@ try
             Console.WriteLine($"  {fl.Name} @{fl.ByteOffset} flags {(int)fl.Flags} {fl.Type?.Name}");
         return 0;
     }
+    if (cmd == "sample")   // SampleAt against the decoded frames: on the file's frames, and halfway between them
+    {
+        var f = HkxAnimationFile.Read(File.ReadAllBytes(args2[0]), compBytes);
+        var sk = Skeleton(args2[1]);
+        var a = f.Decoded;
+        var on = f.SampleAt(Enumerable.Range(0, a.Frames).Select(i => (double)i).ToArray(), a.Fps);
+        var half = f.SampleAt(Enumerable.Range(0, a.Frames - 1).Select(i => i + 0.5).ToArray(), a.Fps);
+        var wa = sk.ToWorld(sk.FullPose(a).t, sk.FullPose(a).q).t;
+        var wh = sk.ToWorld(sk.FullPose(half).t, sk.FullPose(half).q).t;
+        double onErr = sk.MaxPositionError(a, on), mid = 0, step = 0, ratio = 0, outside = 0;
+        var devs = new List<double>();
+        for (int i = 0; i < a.Frames - 1; i++)
+            for (int b = 0; b < sk.Count; b++)
+            {
+                double d = (wh[i, b] - (wa[i, b] + wa[i + 1, b]) / 2).Length(), st = (wa[i + 1, b] - wa[i, b]).Length();
+                devs.Add(d);
+                mid = Math.Max(mid, d);
+                step = Math.Max(step, st);
+                // a halfway point further from both neighbours than they are from each other is off the curve between them
+                if (st > 0.005)
+                    ratio = Math.Max(ratio, d / st);
+                double far = Math.Max((wh[i, b] - wa[i, b]).Length(), (wh[i, b] - wa[i + 1, b]).Length());
+                if (far > st + 0.002 && outside++ < 8)
+                    Console.WriteLine($"  frame {i} + 0.5, {sk.Names[b]}: step {st * 1000:0.0} mm, halfway {far * 1000:0.0} mm from a neighbour");
+            }
+        devs.Sort();
+        Console.WriteLine($"{a.Frames} frames at {a.Fps:0.###} fps: on the frames within {onErr * 1000:0.000} mm; halfway from the neighbours' midpoint "
+                          + $"median {devs[devs.Count / 2] * 1000:0.00} mm, max {mid * 1000:0.0} mm (largest step {step * 1000:0.0} mm, largest deviation "
+                          + $"/ step {ratio:0.00}); halfway points further than the step from a neighbour: {outside}");
+        return 0;
+    }
     if (cmd == "ease")   // a crop with and without the body eased onto the character, compared in world space
     {
         var sk = Skeleton(args2[1]);
@@ -54,8 +86,8 @@ try
         int? f0 = int.Parse(args2[2]), f1 = args2.Count > 3 ? int.Parse(args2[3]) : null;
         bool mir = Flag(args2, "--mirror");
         byte[] src = File.ReadAllBytes(args2[0]);
-        var plain = HkxAnimationFile.Read(HkxEditPipeline.Make(src, compBytes, sk, f0, f1, mir, hct, out _, easeRoot: false)).Decoded;
-        var eased = HkxAnimationFile.Read(HkxEditPipeline.Make(src, compBytes, sk, f0, f1, mir, hct, out var rep, easeRoot: true)).Decoded;
+        var plain = HkxAnimationFile.Read(HkxEditPipeline.Make(src, compBytes, sk, f0, f1, mir, hct, out _, easeRoot: false, editorFps: 60)).Decoded;
+        var eased = HkxAnimationFile.Read(HkxEditPipeline.Make(src, compBytes, sk, f0, f1, mir, hct, out var rep, easeRoot: true, editorFps: 60)).Decoded;
         // world positions of every bone: the root motion (a move, then a turn about up) applied to the armature-space pose
         System.Numerics.Vector3[,] World(HkxAnimation a)
         {
@@ -146,9 +178,10 @@ try
         }
         var t0 = DateTime.Now;
         byte[] outBytes = HkxEditPipeline.Make(File.ReadAllBytes(args2[0]), compBytes, sk, fs == null ? null : int.Parse(fs),
-                                               ls == null ? null : int.Parse(ls), mirror, hct, out var rep);
+                                               ls == null ? null : int.Parse(ls), mirror, hct, out var rep, editorFps: 60);
         File.WriteAllBytes(args2[2], outBytes);
-        Console.WriteLine($"written {args2[2]}: frames {rep.First}-{rep.Last} (file {rep.FileFirst}-{rep.FileLast} at {rep.Fps:0.###} fps), "
+        Console.WriteLine($"written {args2[2]}: frames {rep.First}-{rep.Last} at 60 fps (file {rep.FileFirst:0.##}-{rep.FileLast:0.##} at {rep.Fps:0.###} fps"
+                          + $"{(rep.Resampled ? $", sampled between them, written at {rep.OutFps:0} fps" : "")}), "
                           + $"{rep.SourceFrames} -> {rep.Frames} frames{(rep.Mirrored ? ", mirrored" : "")}, read back within {rep.ReadBackError * 1000:0.0} mm, "
                           + $"{rep.Bytes} bytes, HCT {rep.HctVersion} ({hct.Source}), {(DateTime.Now - t0).TotalSeconds:0.0} s");
         return 0;

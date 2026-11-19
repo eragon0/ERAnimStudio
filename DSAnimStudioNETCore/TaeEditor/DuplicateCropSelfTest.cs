@@ -280,7 +280,7 @@ namespace DSAnimStudio.TaeEditor
         {
             var sb = new StringBuilder();
             foreach (var e in a.SAFE_GetActions().OrderBy(e => e.StartTime).ThenBy(e => e.Type))
-                sb.Append($"[{e.Type} {e.StartTime * 30:0.##}-{e.EndTime * 30:0.##}] ");
+                sb.Append($"[{e.Type} {e.StartTime * DuplicateCrop.Fps:0.##}-{e.EndTime * DuplicateCrop.Fps:0.##}] ");
             return $"{a.SAFE_GetActionCount()} events: {sb}";
         }
 
