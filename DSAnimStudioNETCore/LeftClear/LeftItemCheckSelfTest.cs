@@ -9,6 +9,8 @@
 //   {"anibnd": <path>, "log": <path>, "out": <folder>, "exit": true, "armor": ["BD_M_1501", "AM_M_1500", "LG_M_1500", "HD_M_1500"],
 //    "items": [{"name": "Heater Shield", "model": "WP_A_2020"}, ...],
 //    "cases": [{"entry": "a926_030010", "mirror": false, "frame": 20}, ...]}
+// "right": a weapon model for the right hand, for the whole spec or per case (the case's wins); without one the right hand is empty,
+// as the pack tool measures. A case with a right weapon writes <hkx>.right.measure.json and checks it where the editor draws it.
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -190,6 +192,7 @@ namespace DSAnimStudio.LeftClear
                             return;
                         }
                         asm.SetWeaponID(NewChrAsm.EquipSlotTypes.LeftWeapon, (int)w.Value);
+                        string rightNote = SetRight(doc, asm, Str(c, "right") ?? Str(spec, "right"));
                         asm.UpdateModels(isAsync: false, onCompleteAction: null, forceReloadUnchanged: false, disableCache: false);
                         if (!SplitAnimID.TryParse(proj, Str(c, "entry"), out var id, out string err))
                             throw new InvalidOperationException("entry not parsed: " + err);
@@ -199,7 +202,7 @@ namespace DSAnimStudio.LeftClear
                         {
                             rows = null;
                             rowsName = null;
-                            Note($"case {caseIndex + 1}: {Str(c, "entry")}{(mirror ? " mirrored" : "")}");
+                            Note($"case {caseIndex + 1}: {Str(c, "entry")}{(mirror ? " mirrored" : "")}; right hand: {rightNote}");
                         }
                         tae.SelectNewAnimRef(entry.ParentCategory, entry, false, false, -1f, false, false);
                         Note($"  {Str(item, "name")}: EquipParamWeapon {w.Value} ({model0})");
@@ -229,7 +232,7 @@ namespace DSAnimStudio.LeftClear
                         Note($"    {r.AnimName}: {r.Scene.ItemText}; {r.Frames} frames at {r.Fps:0.##} fps in {r.Seconds:0.0} s; {over} frames over 1 cm"
                              + " (every armor mesh counted)");
                         rows ??= Enumerable.Range(0, r.Frames).Select(_ => new Dictionary<string, Dictionary<string, double>>()).ToList();
-                        rowsName ??= r.AnimName.Replace(" (mirrored)", "");
+                        rowsName ??= r.AnimName.Replace(" (mirrored)", "") + (r.Scene.Body.RightWeapon != null ? ".right" : "");
                         for (int f = 0; f < r.Frames && f < rows.Count; f++)
                             rows[f][Str(item, "name")] = r.Rows[f];
                         // the live checks at the case's frame
@@ -260,6 +263,22 @@ namespace DSAnimStudio.LeftClear
                     break;
                 }
             }
+        }
+
+        /// <summary>The right hand: the weapon row with this model (the lowest ID), or empty (no model: the pack tool's parity cases).</summary>
+        internal static string SetRight(zzz_DocumentIns doc, NewChrAsm asm, string model)
+        {
+            if (string.IsNullOrEmpty(model))
+            {
+                asm.SetWeaponID(NewChrAsm.EquipSlotTypes.RightWeapon, -1);
+                return "empty";
+            }
+            var w = doc.ParamManager.EquipParamWeapon
+                .Where(kv => (kv.Value.GetPartBndName_Short(NewChrAsm.EquipSlotTypes.RightWeapon) ?? "").ToUpperInvariant() == model.ToUpperInvariant())
+                .OrderBy(kv => kv.Key).Select(kv => (long?)kv.Key).FirstOrDefault()
+                ?? throw new InvalidOperationException("no weapon row with the model " + model);
+            asm.SetWeaponID(NewChrAsm.EquipSlotTypes.RightWeapon, (int)w);
+            return $"EquipParamWeapon {w} ({model})";
         }
 
         static void NextItem(int count, bool mirror)
@@ -335,6 +354,26 @@ namespace DSAnimStudio.LeftClear
                     worst = Math.Max(worst, (new D3(app.X, app.Y, app.Z) - mine).Length());
                 }
                 Note($"    the item as drawn against the check's {r.Scene.Item.Hanging}: within {worst * 1000:0.00} mm over its axes (0.5 m long)");
+            }
+            // the right weapon the same way: the model's axes through the plate's frame (Shape)
+            var rw = r.Scene.Body.RightWeapon;
+            var right = model.ChrAsm.WeaponSlots.First(s => s.EquipSlotType == NewChrAsm.EquipSlotTypes.RightWeapon);
+            Matrix? rm = null;
+            if (rw != null)
+                right.AccessModel(0, m => rm = m.CurrentTransform.WorldMatrix);
+            if (rm != null)
+            {
+                var rel = rm.Value * Matrix.Invert(model.CurrentTransform.WorldMatrix);
+                var (o, rr) = rw.World(wt, wq, f);
+                double worst = 0;
+                foreach (var p in new[] { Vector3.Zero, Vector3.UnitX * 0.5f, Vector3.UnitY * 0.5f, Vector3.UnitZ * 0.5f })
+                {
+                    var app = Vector3.Transform(p, rel);
+                    var mine = o + rr * rw.Shape.TransposeTimes(new D3(p.X, p.Y, p.Z));
+                    worst = Math.Max(worst, (new D3(app.X, app.Y, app.Z) - mine).Length());
+                }
+                Note($"    the right weapon as drawn against the check's {rw.Hanging}: within {worst * 1000:0.00} mm over its axes (0.5 m long); "
+                     + $"its plate {rw.Nx * rw.BinSize * 100:0} x {rw.Ny * rw.BinSize * 100:0} cm, {rw.MeshV.Length} vertices, {rw.MeshE.Length / 2} edges");
             }
             // the live measure at that frame against the file's row
             var live = new List<LcHit>();

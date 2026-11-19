@@ -3,7 +3,8 @@
 // hkx the entry plays, to a new ID or in the original's place.
 //   - Items: the equipped left weapon or shield and a list of weapons by ID kept in the config, each 'must clear' or best effort; each
 //     hangs on the dummy its WepAbsorpPosParam gives the left hand. Armor: what the character wears (the meshes the draw mask hides
-//     left out).
+//     left out), and the equipped right weapon on its one-handed dummy, kept clear as a body part ('right weapon'; unequip it to leave
+//     it out).
 //   - The limits are the user's (kept in the config): the wrist's move (cm), the roll offset from the palm-in turn, the two wrist bends,
 //     the elbow's swing (degrees). Defaults: the pack tool's 12 cm, 30, 60, 60, 60.
 //   - Pins: frames where the arm keeps the source's pose, a strike thrown with the left hand. Pins and the report count the animation's
@@ -51,6 +52,7 @@ namespace DSAnimStudio.LeftClear
             public List<(int first, int last)> Pins;
             public List<LcItem> Items;
             public string ArmorText, PinsText;
+            public string RightText;        // the right hand's weapon and where it hangs, or why it doesn't count
             public CancellationTokenSource Cts = new CancellationTokenSource();
             public volatile bool Running;
             public double Progress;
@@ -233,11 +235,18 @@ namespace DSAnimStudio.LeftClear
             LcSkeleton sk;
             LcBody body;
             var items = new List<LcItem>();
+            string rightText;
             try
             {
                 sk = new LcSkeleton(skel);
-                body = LeftItemCheck.BodyOf(sk, armor, mask);
                 var chr = LeftItemCheck.MainFlver(doc.GameData.ReadBinder($"/chr/{model.Name}.chrbnd.dcx"), model.Name);
+                // the right hand's weapon, held one-handed as the solve's attacks hold it: kept clear like the armor
+                var rightSlot = asm.WeaponSlots.FirstOrDefault(s => s.EquipSlotType == NewChrAsm.EquipSlotTypes.RightWeapon);
+                var rw = rightSlot?.EquipParam;
+                string rightName = rw != null ? LeftItemCheck.WeaponName(doc, rightSlot.EquipID, rw) : null;
+                var right = LeftItemCheck.RightWeaponOf(sk, chr, rw, LeftItemCheck.RightDummy(rw), rightName, out string rightWhy);
+                rightText = right != null ? $"{right.Name} on {right.Hanging}" : rightWhy;
+                body = LeftItemCheck.BodyOf(sk, armor, mask, right);
                 foreach (var (id, must) in itemList)
                 {
                     if (!doc.ParamManager.EquipParamWeapon.TryGetValue(id, out var w))
@@ -260,7 +269,7 @@ namespace DSAnimStudio.LeftClear
             {
                 Tae = tae, Proj = proj, Entry = entry, EntryId = entry.SplitID, Hkx = hkx, Source = bytes.HkxBytes, Compendium = bytes.CompendiumBytes,
                 Skeleton = skel, Mirror = mirror, Hold = hold, Limits = limits, Pins = pins, Items = items, PinsText = pinsText,
-                ArmorText = string.Join(", ", armor.Select(a => a.name)), Running = true, Stage = "starting",
+                ArmorText = string.Join(", ", armor.Select(a => a.name)), RightText = rightText, Running = true, Stage = "starting",
             };
             job = j;
             var input = new LcSolveInput { Sk = sk, Body = body, Items = items, Source = src, Mirror = mirror, Hold = hold, Pins = pins, Limits = limits };
@@ -365,6 +374,7 @@ namespace DSAnimStudio.LeftClear
                   + (j.Mirror ? ", as a mirrored clip plays it (the change on the file's right arm)" : ""));
             o.Add($"Armor: {j.ArmorText}. Limits: the wrist {j.Limits.MoveCm:0.#} cm, roll {j.Limits.Roll:0}, bends {j.Limits.Bend1:0} / {j.Limits.Bend2:0}, swing {j.Limits.Swing:0}"
                   + (j.Pins.Count > 0 ? $"; pinned {j.PinsText}" : "") + (j.Hold ? "; held the game's way" : ""));
+            o.Add($"Right hand: {j.RightText}");
             o.Add("Frames over 1 cm (deepest), before -> with the hold -> after:");
             for (int i = 0; i < j.Items.Count; i++)
             {
@@ -693,6 +703,11 @@ namespace DSAnimStudio.LeftClear
                     error = null;
                 }
             }
+            Label("Right hand", column);
+            var rightSlot = tae.Graph?.ViewportInteractor?.CurrentModel?.ChrAsm?.WeaponSlots.FirstOrDefault(s => s.EquipSlotType == NewChrAsm.EquipSlotTypes.RightWeapon);
+            ImGui.Text(rightSlot?.EquipParam != null ? $"{Name(rightSlot.EquipID)}  (kept clear like the armor)" : "nothing");
+            Help("The equipped right weapon counts as a body part, 'right weapon', held where the game holds it one-handed: a shield's\n"
+                 + "face must not cross it, another item's points must not stand on both sides of its blade. Unequip it to leave it out.");
             ImGui.Separator();
 
             Label("Limits", column);

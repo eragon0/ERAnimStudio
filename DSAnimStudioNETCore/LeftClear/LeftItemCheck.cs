@@ -1,6 +1,7 @@
 // ERAnimStudio: 'Left Item Check' in the Animation menu. Whether the item in the left hand goes into the body during the animation:
 // the equipped left weapon or shield against the equipped armor, every frame of the animation the selected entry plays, measured on
-// the models' own meshes (LcGeometry, LcMeasure: the clearance measure of the pack's left_clear.py, ported).
+// the models' own meshes (LcGeometry, LcMeasure: the clearance measure of the pack's left_clear.py, ported). The right hand's weapon,
+// where the viewer holds it, counts too: as one more body part, 'right weapon' (not in the pack tool).
 //   - The timeline gets a strip under its frame numbers: each frame of the hkx green (clear), yellow (under 1 cm), orange to red
 //     (deeper, 5 cm and more red); hovering it names the body parts and how deep.
 //   - The viewport draws where it crosses at the frame shown (the armor coming through a shield's face, or a weapon's points inside
@@ -45,6 +46,7 @@ namespace DSAnimStudio.LeftClear
             public LcMeasure Measure;
             public string ItemText;
             public string ArmorText;
+            public string RightText;     // the right hand's weapon and where it hangs, or why it doesn't count
         }
 
         /// <summary>One animation measured.</summary>
@@ -81,6 +83,9 @@ namespace DSAnimStudio.LeftClear
             public NewChrAsm.EquipSlotTypes SlotType;
             public int Dummy;
             public string ItemName;
+            public ParamData.EquipParamWeapon RightEquip;    // the right hand's weapon, or null
+            public int RightDummy;
+            public string RightName;
         }
 
         /// <summary>The self-test's switch: every armor mesh counts, as in the pack's left_clear.py, whatever the draw mask hides.</summary>
@@ -118,8 +123,53 @@ namespace DSAnimStudio.LeftClear
             return armor;
         }
 
-        /// <summary>The armor's geometry on the skeleton; meshes the draw mask hides don't count.</summary>
-        internal static LcBody BodyOf(LcSkeleton sk, List<(NewEquipSlot_Armor slot, string piece, string name)> armor, bool[] mask)
+        /// <summary>
+        /// The right hand's weapon as an obstacle: a thin plate across its flat (LcItem.ThinPlate), hung on the dummy given (the viewer's,
+        /// or the one-handed one of its WepAbsorpPosParam). Null with why when it can't count: nothing there, a weapon bound to the
+        /// skeleton instead of a dummy, a dummy the character lacks, no model.
+        /// </summary>
+        internal static LcItem RightWeaponOf(LcSkeleton sk, FLVER2 chr, ParamData.EquipParamWeapon w, int dummy, string name, out string why)
+        {
+            why = null;
+            if (w == null)
+            {
+                why = "nothing in the right hand";
+                return null;
+            }
+            if (w.GetAbsorpPosParam()?.IsSkeletonBind == true)
+            {
+                why = $"{name} is bound to the skeleton, not held on a dummy: left out";
+                return null;
+            }
+            if (dummy < 0 || dummy >= 1000 || !chr.Dummies.Any(d => d.ReferenceID == dummy))
+            {
+                why = $"{name}: the character's model has no dummy {dummy} to hold it: left out";
+                return null;
+            }
+            try
+            {
+                var it = LcItem.ThinPlate(name, name, MainFlver(w.GetPartBnd(NewChrAsm.EquipSlotTypes.RightWeapon, false), name));
+                it.HangOnDummy(sk, chr, dummy);
+                return it;
+            }
+            catch (Exception e)
+            {
+                why = e.Message + ": left out";
+                return null;
+            }
+        }
+
+        /// <summary>The right hand's dummy of a weapon held one-handed (its WepAbsorpPosParam), or -1.</summary>
+        internal static int RightDummy(ParamData.EquipParamWeapon w)
+        {
+            var abs = w?.GetAbsorpPosParam();
+            if (abs == null || abs.IsSkeletonBind)
+                return -1;
+            return abs.NewAbsorpPos.TryGetValue(ParamData.WepAbsorpPosParam.NewWepAbsorpPosType.Right, out var c) ? c.Model0DummyPoly : -1;
+        }
+
+        /// <summary>The armor's geometry on the skeleton; meshes the draw mask hides don't count. right: the right hand's weapon, or null.</summary>
+        internal static LcBody BodyOf(LcSkeleton sk, List<(NewEquipSlot_Armor slot, string piece, string name)> armor, bool[] mask, LcItem right = null)
         {
             var pieces = new List<LcArmorPiece>();
             foreach (var (slot, piece, name) in armor)
@@ -133,7 +183,7 @@ namespace DSAnimStudio.LeftClear
                 string mat = m.MaterialIndex >= 0 && m.MaterialIndex < p.Flver.Materials.Count ? p.Flver.Materials[m.MaterialIndex].Name : null;
                 int g = LcBody.MaskGroup(mat);
                 return g < 0 || g >= mask.Length || mask[g];
-            });
+            }, right);
         }
 
         /// <summary>A left-hand item: its model hung on its dummy of the character's model; a shield (on a *Shield bone) as its plate.</summary>
@@ -209,10 +259,15 @@ namespace DSAnimStudio.LeftClear
                 mask = Enumerable.Repeat(true, mask.Length).ToArray();
             string itemName = equip.GetPartBndName_Short(left.EquipSlotType);
             string weaponName = WeaponName(tae.ParentDocument, left.EquipID, equip);
+            // the right hand's weapon, where the viewer holds it
+            var right = asm.WeaponSlots.FirstOrDefault(s => s.EquipSlotType == NewChrAsm.EquipSlotTypes.RightWeapon);
+            var rightEquip = right?.EquipParam;
+            int rightDummy = rightEquip != null ? right.GetFinalAbsorpModelDmyPoly(0) : -1;
             bool mirrored = MirrorPlayback.IsMirrored(proj, entry.SplitID);
             var preview = LeftClearFix.PreviewOf(proj, entry.SplitID, out int previewVersion);
             string sceneKey = string.Join("|", RuntimeHelpers.GetHashCode(sk), model.Name, itemName, dummy,
-                                          string.Join(",", armor.Select(a => a.Item3)), new string(mask.Select(m => m ? '1' : '0').ToArray()));
+                                          string.Join(",", armor.Select(a => a.Item3)), new string(mask.Select(m => m ? '1' : '0').ToArray()),
+                                          rightEquip != null ? right.EquipID : -1, rightDummy);
             return new Request
             {
                 SceneKey = sceneKey,
@@ -231,6 +286,9 @@ namespace DSAnimStudio.LeftClear
                 SlotType = left.EquipSlotType,
                 Dummy = dummy,
                 ItemName = weaponName,
+                RightEquip = rightEquip,
+                RightDummy = rightDummy,
+                RightName = rightEquip != null ? WeaponName(tae.ParentDocument, right.EquipID, rightEquip) : null,
             };
         }
 
@@ -340,8 +398,9 @@ namespace DSAnimStudio.LeftClear
         static Scene Build(Request req)
         {
             var sk = new LcSkeleton(HkxSkeleton.FromHavok(req.Skeleton));
-            var body = BodyOf(sk, req.Armor, req.Mask);
             var chr = MainFlver(req.Doc.GameData.ReadBinder($"/chr/{req.ChrName}.chrbnd.dcx"), req.ChrName);
+            var right = RightWeaponOf(sk, chr, req.RightEquip, req.RightDummy, req.RightName, out string rightWhy);
+            var body = BodyOf(sk, req.Armor, req.Mask, right);
             var item = ItemOf(sk, chr, MainFlver(req.Equip.GetPartBnd(req.SlotType, false), req.ItemName), req.Dummy, req.ItemName);
             bool shield = item.Kind == LcItemKind.Plate;
             return new Scene
@@ -353,6 +412,7 @@ namespace DSAnimStudio.LeftClear
                 Measure = new LcMeasure(body),
                 ItemText = $"{req.ItemName}, {(shield ? "the shield's face" : "its model's points")}, on {item.Hanging}",
                 ArmorText = string.Join(", ", req.Armor.Select(a => a.name)),
+                RightText = right != null ? $"{right.Name} on {right.Hanging}" : rightWhy,
             };
         }
 
@@ -514,7 +574,10 @@ namespace DSAnimStudio.LeftClear
             int over = r.Worst.Count(w => w > 0.01);
             printer.AppendLine($"[{MenuText}] {r.Scene.ItemText}", Color.White);
             if (full)
+            {
                 printer.AppendLine($"    against {r.Scene.ArmorText}", Color.White);
+                printer.AppendLine($"    right hand: {r.Scene.RightText}", Color.White);
+            }
             if (parts != null)
                 printer.AppendLine($"    this frame: {Describe(parts)}", parts.Values.Any(v => v > Floor) ? DepthColor(parts.Values.Max()) : Color.White);
             printer.AppendLine($"    {r.AnimName}: {over} of {r.Frames} frames over 1 cm", over > 0 ? Color.Orange : Color.White);
@@ -560,9 +623,10 @@ namespace DSAnimStudio.LeftClear
             }
             Enabled = ImguiOSD.MenuBar.Checkbox(MenuText, Enabled);
             Tip("Whether the item in the left hand goes into the body: the equipped left weapon or shield against the "
-                + "equipped armor, every frame of the selected animation. A strip under the timeline's frame numbers colours each frame "
-                + "(green clear, yellow under 1 cm, orange to red deeper; hover it for the body parts), the viewport marks where it crosses "
-                + "and the status lists it. A shield counts the armor coming through its face, any other item its points inside the armor.");
+                + "equipped armor and the right hand's weapon, every frame of the selected animation. A strip under the timeline's frame "
+                + "numbers colours each frame (green clear, yellow under 1 cm, orange to red deeper; hover it for the body parts), the "
+                + "viewport marks where it crosses and the status lists it. A shield counts the armor and the right weapon coming through "
+                + "its face, any other item its points inside the armor and on both sides of the right weapon's blade.");
         }
     }
 }

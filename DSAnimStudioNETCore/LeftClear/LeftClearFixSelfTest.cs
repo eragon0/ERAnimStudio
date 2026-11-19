@@ -10,6 +10,7 @@
 //   {"anibnd": <path>, "log": <path>, "exit": true, "save": true, "binder": "c0000_a8x.anibnd.dcx",
 //    "armor": ["BD_M_1501", ...], "left": "WP_A_2020", "items": "31330000:1;31000000:1;32020000:0;2000000:1;3180000:0",
 //    "cases": [{"entry": "a926_030010", "mirror": false, "frame": 20, "limits": "12,30,60,60,60", "pins": "", "target": "a926_030012", "move": false}, ...]}
+// "right": a weapon model for the right hand, for the whole spec or per case (the case's wins); without one the right hand is empty.
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -198,7 +199,9 @@ namespace DSAnimStudio.LeftClear
                     MirrorPlayback.SetMirrored(proj, id, mirror);
                     if (phase == 0)
                     {
-                        Note($"case {caseIndex + 1}: {Str(c, "entry")}{(mirror ? " mirrored" : "")}, limits {Str(c, "limits")}, pins '{Str(c, "pins")}'");
+                        string rightNote = LeftItemCheckSelfTest.SetRight(doc, asm, Str(c, "right") ?? Str(spec, "right"));
+                        asm.UpdateModels(isAsync: false, onCompleteAction: null, forceReloadUnchanged: false, disableCache: false);
+                        Note($"case {caseIndex + 1}: {Str(c, "entry")}{(mirror ? " mirrored" : "")}, limits {Str(c, "limits")}, pins '{Str(c, "pins")}'; right hand: {rightNote}");
                         tae.SelectNewAnimRef(entry.ParentCategory, entry, false, false, -1f, false, false);
                         phase = 1;
                         Wait(60);

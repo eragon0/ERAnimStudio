@@ -6,6 +6,10 @@
 //   - Any other item (its points): how deep its points go inside the armor. A bone's height field says a point may be inside, and
 //     the nearest armor vertex's normal has to face away from it (its distance is the depth); in the head's height field the field
 //     alone decides (a helmet's dome, whose liner faces in). The own hand and forearm are left out: they hold it.
+//   - The weapon in the right hand (LcBody.RightWeapon, 'right weapon'), mesh against mesh both ways (Crossing): an edge of one
+//     going from one side of the other's plate to the other, at a point inside the plate's outline, crosses it. How deep: the least of
+//     how far that point lies from the outline's edge (how far the item would slide to clear it) and how far the crossing mesh stands
+//     on either side. Two blades crossing seldom leave a point of either inside the other, so the inside test can't see them.
 // The armor that doesn't move with the left arm is posed once per frame (Frame); the left arm's (from L_UpperArm down) is posed from
 // the pose being measured, so the left arm fix can measure many poses of its arm against one frame. 'fast' (the fix's search): every
 // second vertex of the arm rigid on its strongest bone, every second static vertex near a plate, every third point of an item.
@@ -144,6 +148,7 @@ namespace DSAnimStudio.LeftClear
             public D3[] Wt;                 // the frame's pose (armature space), the one the static armor was posed on
             public DQ[] Wq;
             public D3[] SV;                 // the static skinned vertices (Body.StaticV's order)
+            public D3[] RightV;             // the right weapon's mesh, posed (Body.RightWeapon.MeshV's order)
             public LcKdTree STree;          // null: found by going through them
             public D3[] P, N;               // rigid vertices of the static bones, their normals
             public LcKdTree Tree;
@@ -168,6 +173,12 @@ namespace DSAnimStudio.LeftClear
         public Frame PrepareStatic(D3[] wt, DQ[] wq, bool plates, bool points, bool trees = true)
         {
             var fr = new Frame { Wt = wt, Wq = wq };
+            var rw = Body.RightWeapon;
+            if (rw != null)
+            {
+                var (o, r) = rw.World(wt, wq);
+                fr.RightV = rw.MeshV.Select(v => o + r * v).ToArray();
+            }
             if (plates)
             {
                 fr.SV = new D3[Body.StaticV.Length];
@@ -265,7 +276,11 @@ namespace DSAnimStudio.LeftClear
             var mv = PoseMoving(wt, wq, plates, points, fast);
             var res = new Dictionary<string, double>[items.Count];
             for (int i = 0; i < items.Count; i++)
+            {
                 res[i] = items[i].Kind == LcItemKind.Plate ? Plate(fr, mv, items[i], wt, wq, fast, hits) : Points(fr, mv, items[i], wt, wq, fast, hits);
+                if (Body.RightWeapon != null && fr.RightV != null)
+                    RightCross(fr, items[i], wt, wq, res[i], hits);
+            }
             return res;
         }
 
@@ -280,7 +295,7 @@ namespace DSAnimStudio.LeftClear
             void Look(D3 pos, int v)
             {
                 var q = r.TransposeTimes(pos - o);
-                int i = (int)Math.Floor((q.X - it.X0) / LcItem.Bin), j = (int)Math.Floor((q.Y - it.Y0) / LcItem.Bin);
+                int i = (int)Math.Floor((q.X - it.X0) / it.BinSize), j = (int)Math.Floor((q.Y - it.Y0) / it.BinSize);
                 if (i < 0 || i >= it.Nx || j < 0 || j >= it.Ny || Math.Abs(q.Z) >= PlateDepthLimit || !it.Mask[i, j])
                     return;
                 double dz = it.Zf[i, j] - q.Z;          // > 0: in front of the face
@@ -401,6 +416,100 @@ namespace DSAnimStudio.LeftClear
                 hits?.Add(new LcHit { P = pts[i], Depth = dep, Part = p, Index = i });
             }
             return res;
+        }
+
+        /// <summary>
+        /// The item against the right weapon: the item's mesh through the right weapon's plate, and the right weapon's mesh through the
+        /// item's plate (a shield's own, a weapon's Thin); the deeper counts, as 'right weapon'.
+        /// </summary>
+        void RightCross(Frame fr, LcItem it, D3[] wt, DQ[] wq, Dictionary<string, double> res, List<LcHit> hits)
+        {
+            var rw = Body.RightWeapon;
+            double dep = 0;
+            if (it.MeshV != null)
+            {
+                var (o, r) = it.World(wt, wq);
+                // only the item's vertices near the right weapon's plate are posed
+                var (ro, rr) = rw.World(wt, wq);
+                var c = r.TransposeTimes(ro + rr * rw.Half - o);
+                double rad2 = rw.Radius * rw.Radius;
+                var v = new D3[it.MeshV.Length];
+                var near = new bool[v.Length];
+                for (int i = 0; i < v.Length; i++)
+                    if ((it.MeshV[i] - c).LengthSquared() <= rad2)
+                    {
+                        near[i] = true;
+                        v[i] = o + r * it.MeshV[i];
+                    }
+                dep = Crossing(rw, v, near, it.MeshE, wt, wq, hits);
+            }
+            var plate = it.Kind == LcItemKind.Plate ? it : it.Thin;
+            if (plate != null)
+                dep = Math.Max(dep, Crossing(plate, fr.RightV, null, rw.MeshE, wt, wq, hits));
+            if (dep > 0)
+                res[LcBody.RightWeaponPart] = Math.Max(res.TryGetValue(LcBody.RightWeaponPart, out double was) ? was : 0, dep);
+        }
+
+        /// <summary>
+        /// A mesh (posed vertices, its edges; use: the vertices to look at, null for all) through a plate: each edge whose ends lie on
+        /// either side of the plate's mid surface crosses it where it meets that surface, when that point is inside the outline. Its
+        /// depth: the least of the point's distance to the outline's edge and how far the mesh stands in front of and behind the plate
+        /// inside the outline. The deepest crossing, 0 for none; hits gets the crossing points.
+        /// </summary>
+        static double Crossing(LcItem pl, D3[] v, bool[] use, int[] edges, D3[] wt, DQ[] wq, List<LcHit> hits)
+        {
+            if (v == null || edges == null)
+                return 0;
+            var (o, r) = pl.World(wt, wq);
+            var mid = o + r * pl.Half;
+            double rad2 = pl.Radius * pl.Radius, bin = pl.BinSize;
+            int n = v.Length;
+            var q = new D3[n];
+            var d = new double[n];
+            var ok = new bool[n];
+            double front = 0, back = 0;
+            bool Bin(double x, double y, out int a, out int b)
+            {
+                a = (int)Math.Floor((x - pl.X0) / bin);
+                b = (int)Math.Floor((y - pl.Y0) / bin);
+                return a >= 0 && a < pl.Nx && b >= 0 && b < pl.Ny && pl.Mask[a, b];
+            }
+            for (int i = 0; i < n; i++)
+            {
+                if (use != null && !use[i] || (v[i] - mid).LengthSquared() > rad2)
+                    continue;
+                q[i] = r.TransposeTimes(v[i] - o);
+                bool inside = Bin(q[i].X, q[i].Y, out int a, out int b);
+                d[i] = q[i].Z - (inside ? (pl.Zf[a, b] + pl.Zb[a, b]) / 2 : pl.MidMean);
+                if (Math.Abs(d[i]) >= PlateDepthLimit)
+                    continue;
+                ok[i] = true;
+                if (!inside)
+                    continue;
+                if (d[i] < 0)
+                    front = Math.Max(front, -d[i]);
+                else
+                    back = Math.Max(back, d[i]);
+            }
+            double reach = Math.Min(front, back), deepest = 0;
+            if (reach <= 0)
+                return 0;
+            for (int k = 0; k + 1 < edges.Length; k += 2)
+            {
+                int i = edges[k], j = edges[k + 1];
+                if (!ok[i] || !ok[j] || (d[i] < 0) == (d[j] < 0))
+                    continue;
+                double t = d[i] / (d[i] - d[j]);
+                var c = q[i] + (q[j] - q[i]) * t;
+                if (!Bin(c.X, c.Y, out int a, out int b))
+                    continue;
+                double dep = Math.Min(pl.EdgeDist[a, b], reach);
+                if (dep <= 0)
+                    continue;
+                deepest = Math.Max(deepest, dep);
+                hits?.Add(new LcHit { P = o + r * c, Depth = dep, Part = LcBody.RightWeaponPart, Index = i });
+            }
+            return deepest;
         }
 
         /// <summary>Every frame of a posed animation: [frame][item] {body part: depth in m}. progress gets the share done.</summary>

@@ -7,6 +7,9 @@
 //   - The item in the left hand: a shield as a plate (its face and back as height fields over the model's x / y, 1 cm bins), any
 //     other item as its model's points; hung on a dummy of the character's model, +z on the dummy's forward and +y on its up, or on a
 //     bone by a fixed turn.
+//   - The weapon in the right hand, an obstacle: a plate across its thinnest extent (its principal axes, 0.5 cm bins), hung on its
+//     dummy. Every item and the right weapon keep their whole mesh (vertices and edges) for the crossing test between them, and a
+//     weapon in the left hand its own thin plate.
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -366,13 +369,19 @@ namespace DSAnimStudio.LeftClear
             return int.TryParse(materialName.Substring(a + 1, b - a - 1), out int g) ? g : -1;
         }
 
+        /// <summary>The weapon in the right hand, an obstacle like the armor (null: none): a thin plate (LcItem.ThinPlate) hung where it's held.</summary>
+        public readonly LcItem RightWeapon;
+        public const string RightWeaponPart = "right weapon";
+
         /// <summary>
         /// meshShown: which meshes count (piece, mesh index), every mesh by default; the viewer leaves out the ones its draw mask hides,
-        /// as the game does.
+        /// as the game does. rightWeapon: the right hand's weapon as a thin plate, hung (LcMeasure.RightCross measures the items against
+        /// it, mesh against mesh).
         /// </summary>
-        public LcBody(LcSkeleton sk, IList<LcArmorPiece> pieces, Func<LcArmorPiece, int, bool> meshShown = null)
+        public LcBody(LcSkeleton sk, IList<LcArmorPiece> pieces, Func<LcArmorPiece, int, bool> meshShown = null, LcItem rightWeapon = null)
         {
             Sk = sk;
+            RightWeapon = rightWeapon;
             MovingBone = new bool[sk.Count];
             int mr = sk.Bone(MovingRoot);
             if (mr >= 0)
@@ -578,14 +587,18 @@ namespace DSAnimStudio.LeftClear
         public LcItemKind Kind;
         public int Bone;                 // the bone it hangs on
         public D3 Origin;                // the model's origin in the bone's frame
-        public M3 Axes;                  // the model's x, y, z in the bone's frame (columns)
+        public M3 Axes;                  // the item's x, y, z in the bone's frame (columns): the model's, turned by Shape
+        public M3 Shape = M3.Identity;   // the item's frame in the model's (ThinPlate: its principal axes)
         public string Hanging;           // how it hangs, for the user
 
         // plate: the face (smallest z) and back (largest z) per bin over the model's x / y
+        public double BinSize = Bin;     // a shield's 1 cm; a thin plate's ThinBin
         public double X0, Y0;
         public int Nx, Ny;
         public double[,] Zf, Zb;
         public bool[,] Mask;
+        public double[,] EdgeDist;       // per bin of the outline: how far its centre is from the outline's edge, in the plate (m)
+        public double MidMean;           // the mid surface's mean height (z), for a point off the outline
         public D3 Half;
         public double Radius;
 
@@ -594,12 +607,79 @@ namespace DSAnimStudio.LeftClear
         public D3[] FastPoints;          // every third, for the fix's search
         public bool Required = true;     // the fix: must clear (else as far as the limits allow)
 
+        // the whole mesh, in the item's frame (Shape applied), for the crossing test against the right weapon (LcMeasure.Crossing)
+        public D3[] MeshV;
+        public int[] MeshE;              // its edges, two vertex indices each
+        public LcItem Thin;              // a weapon in the left hand: its own thin plate (Shape relative to this item's frame), hung with it
+
+        /// <summary>A plate's bins when it is a thin plate: blades are a few cm wide, so 0.5 cm.</summary>
+        public const double ThinBin = 0.005;
+
         /// <summary>A shield's plate from its model (fh_shield.plate): every triangle sampled 0.25 cm apart along its longest edge.</summary>
         public static LcItem Plate(string name, string model, FLVER2 f)
         {
-            var it = new LcItem { Name = name, Model = model, Kind = LcItemKind.Plate };
             var p = LcFlver.RootedPositions(f, out var tris);
-            var s = new List<D3>();
+            var it = PlateFrom(name, model, p, tris, Bin);
+            it.SetMesh(p, tris);
+            return it;
+        }
+
+        /// <summary>
+        /// Any item as a plate across its thinnest extent: the model turned onto its principal axes (most spread first, so z is the
+        /// thinnest), the plate built in that frame (Shape: the model's points = Shape * the plate's). A blade is a plate across its
+        /// flat; the right hand's weapon is measured so, as an obstacle (LcBody.RightWeapon), and a weapon in the left hand gets one
+        /// (Thin) for the right weapon's edges.
+        /// </summary>
+        public static LcItem ThinPlate(string name, string model, FLVER2 f)
+        {
+            var p = LcFlver.RootedPositions(f, out var tris);
+            var it = ThinPlateFrom(name, model, p, tris);
+            it.SetMesh(it.MeshV, tris);
+            return it;
+        }
+
+        static LcItem ThinPlateFrom(string name, string model, D3[] p, List<int[]> tris)
+        {
+            if (p.Length < 3)
+                throw new InvalidOperationException($"{model}: the model has too few points");
+            var c = D3.Zero;
+            foreach (var x in p)
+                c = c + x;
+            c = c / p.Length;
+            var a = LcLinear.PrincipalAxes(p, c);
+            var shape = M3.FromColumns(a[0], a[1], D3.Cross(a[0], a[1]).Unit());
+            var q = p.Select(x => shape.TransposeTimes(x)).ToArray();
+            var it = PlateFrom(name, model, q, tris, ThinBin);
+            it.Shape = shape;
+            it.MeshV = q;
+            return it;
+        }
+
+        void SetMesh(D3[] v, List<int[]> tris)
+        {
+            MeshV = v;
+            var seen = new HashSet<long>();
+            var e = new List<int>();
+            foreach (var t in tris)
+                for (int k = 0; k < 3; k++)
+                {
+                    int a = t[k], b = t[(k + 1) % 3];
+                    if (a == b)
+                        continue;
+                    long key = (long)Math.Min(a, b) << 32 | (uint)Math.Max(a, b);
+                    if (seen.Add(key))
+                    {
+                        e.Add(a);
+                        e.Add(b);
+                    }
+                }
+            MeshE = e.ToArray();
+        }
+
+        static LcItem PlateFrom(string name, string model, D3[] p, List<int[]> tris, double bin)
+        {
+            var it = new LcItem { Name = name, Model = model, Kind = LcItemKind.Plate, BinSize = bin };
+                        var s = new List<D3>();
             foreach (var t in tris)
             {
                 D3 a = p[t[0]], b = p[t[1]], c = p[t[2]];
@@ -614,10 +694,10 @@ namespace DSAnimStudio.LeftClear
             }
             if (s.Count == 0)
                 throw new InvalidOperationException($"{model}: the model has no triangles to make a plate from");
-            it.X0 = s.Min(q => q.X) - Bin;
-            it.Y0 = s.Min(q => q.Y) - Bin;
-            it.Nx = (int)((s.Max(q => q.X) - it.X0) / Bin) + 2;
-            it.Ny = (int)((s.Max(q => q.Y) - it.Y0) / Bin) + 2;
+            it.X0 = s.Min(q => q.X) - bin;
+            it.Y0 = s.Min(q => q.Y) - bin;
+            it.Nx = (int)((s.Max(q => q.X) - it.X0) / bin) + 2;
+            it.Ny = (int)((s.Max(q => q.Y) - it.Y0) / bin) + 2;
             it.Zf = new double[it.Nx, it.Ny];
             it.Zb = new double[it.Nx, it.Ny];
             it.Mask = new bool[it.Nx, it.Ny];
@@ -629,26 +709,64 @@ namespace DSAnimStudio.LeftClear
                 }
             foreach (var q in s)
             {
-                int i = (int)((q.X - it.X0) / Bin), j = (int)((q.Y - it.Y0) / Bin);
+                int i = (int)((q.X - it.X0) / bin), j = (int)((q.Y - it.Y0) / bin);
                 it.Zf[i, j] = Math.Min(it.Zf[i, j], q.Z);
                 it.Zb[i, j] = Math.Max(it.Zb[i, j], q.Z);
                 it.Mask[i, j] = true;
             }
-            it.Half = new D3(it.X0 + it.Nx * Bin / 2, it.Y0 + it.Ny * Bin / 2, 0);
+            it.Half = new D3(it.X0 + it.Nx * bin / 2, it.Y0 + it.Ny * bin / 2, 0);
             it.Radius = (it.Half - new D3(it.X0, it.Y0, 0)).Length() + 0.12;
+            // the outline's in-plane distance to its edge (two-pass chamfer, 1 / sqrt 2 steps; off the grid is outside)
+            var d = new double[it.Nx, it.Ny];
+            double mids = 0;
+            int count = 0;
+            for (int i = 0; i < it.Nx; i++)
+                for (int j = 0; j < it.Ny; j++)
+                {
+                    d[i, j] = it.Mask[i, j] ? double.MaxValue : 0;
+                    if (it.Mask[i, j])
+                    {
+                        mids += (it.Zf[i, j] + it.Zb[i, j]) / 2;
+                        count++;
+                    }
+                }
+            double At(int i, int j) => i < 0 || j < 0 || i >= it.Nx || j >= it.Ny ? 0 : d[i, j];
+            const double R2 = 1.4142135623730951;
+            for (int i = 0; i < it.Nx; i++)
+                for (int j = 0; j < it.Ny; j++)
+                    if (it.Mask[i, j])
+                        d[i, j] = Math.Min(d[i, j], Math.Min(Math.Min(At(i - 1, j) + 1, At(i, j - 1) + 1),
+                                                             Math.Min(At(i - 1, j - 1) + R2, At(i - 1, j + 1) + R2)));
+            for (int i = it.Nx - 1; i >= 0; i--)
+                for (int j = it.Ny - 1; j >= 0; j--)
+                    if (it.Mask[i, j])
+                        d[i, j] = Math.Min(d[i, j], Math.Min(Math.Min(At(i + 1, j) + 1, At(i, j + 1) + 1),
+                                                             Math.Min(At(i + 1, j + 1) + R2, At(i + 1, j - 1) + R2)));
+            it.EdgeDist = new double[it.Nx, it.Ny];
+            for (int i = 0; i < it.Nx; i++)
+                for (int j = 0; j < it.Ny; j++)
+                    it.EdgeDist[i, j] = it.Mask[i, j] ? (d[i, j] - 0.5) * bin : 0;
+            it.MidMean = count > 0 ? mids / count : 0;
             return it;
         }
 
-        /// <summary>Any other item as its model's points, about PointCount of them (fh_body_check.read_weapon, left_clear's subsample).</summary>
+        /// <summary>
+        /// Any other item as its model's points, about PointCount of them (fh_body_check.read_weapon, left_clear's subsample); its whole
+        /// mesh and its thin plate for the right weapon.
+        /// </summary>
         public static LcItem PointsOf(string name, string model, FLVER2 f)
         {
-            var p = LcFlver.RootedPositions(f, out _);
+            var p = LcFlver.RootedPositions(f, out var tris);
             int step = Math.Max(1, p.Length / PointCount);
             var pts = new List<D3>();
             for (int i = 0; i < p.Length; i += step)
                 pts.Add(p[i]);
-            return new LcItem { Name = name, Model = model, Kind = LcItemKind.Points, Points = pts.ToArray(),
-                                FastPoints = pts.Where((_, i) => i % 3 == 0).ToArray() };
+            var it = new LcItem { Name = name, Model = model, Kind = LcItemKind.Points, Points = pts.ToArray(),
+                                  FastPoints = pts.Where((_, i) => i % 3 == 0).ToArray() };
+            it.SetMesh(p, tris);
+            if (p.Length >= 3 && tris.Count > 0)
+                it.Thin = ThinPlateFrom(name, model, p, tris);
+            return it;
         }
 
         /// <summary>Hung on a dummy of the character's model: +z on the dummy's forward, +y on its up (left_clear.shield_dummy).</summary>
@@ -668,8 +786,20 @@ namespace DSAnimStudio.LeftClear
             var up = rt * D3.From(d.Upward).Unit();
             up = (up - D3.Dot(up, fw) * fw).Unit();
             Origin = rt * (D3.From(d.Position) - t);
-            Axes = M3.FromColumns(D3.Cross(up, fw), up, fw);
+            Axes = M3.FromColumns(D3.Cross(up, fw), up, fw) * Shape;
             Hanging = $"dummy {dummyId} on {boneName}";
+            HangThin();
+        }
+
+        // the thin plate hangs with its item
+        void HangThin()
+        {
+            if (Thin == null)
+                return;
+            Thin.Bone = Bone;
+            Thin.Origin = Origin;
+            Thin.Axes = Axes * Thin.Shape;
+            Thin.Hanging = Hanging;
         }
 
         /// <summary>Hung on a bone with a fixed turn: a left weapon on L_Weapon, the model turned 180 degrees about +X from R_Weapon's rule.</summary>
@@ -679,8 +809,9 @@ namespace DSAnimStudio.LeftClear
             if (Bone < 0)
                 throw new InvalidOperationException($"the skeleton has no bone {boneName}");
             Origin = D3.Zero;
-            Axes = axes;
+            Axes = axes * Shape;
             Hanging = boneName;
+            HangThin();
         }
 
         /// <summary>The left weapon's rule on L_Weapon: the model's x, y, z on the bone's -X, +Y, -Z.</summary>
