@@ -211,7 +211,8 @@ namespace DSAnimStudio.LeftClear
                     else
                         items = items.OrderBy(x => x.id == left.EquipID ? 0 : 1).ToList();
                     string why = LeftClearFix.Start(tae, items, LcLimits.Parse(Str(c, "limits")), Str(c, "pins") ?? "", true);
-                    Note($"  solve started: {why ?? "yes"}; {items.Count} items");
+                    Note($"  solve started: {why ?? "yes"}; {items.Count} items"
+                         + (LeftClearFix.Current?.Pins?.Count > 0 ? "; pins as solved: " + string.Join(", ", LeftClearFix.Current.Pins.Select(p => $"{p.first}-{p.last}")) : ""));
                     if (why != null)
                     {
                         Next();

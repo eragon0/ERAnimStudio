@@ -6,7 +6,8 @@
 //     left out).
 //   - The limits are the user's (kept in the config): the wrist's move (cm), the roll offset from the palm-in turn, the two wrist bends,
 //     the elbow's swing (degrees). Defaults: the pack tool's 12 cm, 30, 60, 60, 60.
-//   - Pins: frames (the timeline's, 30 a second) where the arm keeps the source's pose, a strike thrown with the left hand.
+//   - Pins: frames where the arm keeps the source's pose, a strike thrown with the left hand. Pins and the report count the animation's
+//     own frames, as the playback's 'Frame: X / N' does (a 60 fps file's frame 40 is a 30 fps file's 20).
 //   - An entry marked 'Play Mirrored' (Animation menu) is solved on the pose as the game plays it and the copy mirrored back, so the change
 //     sits on the file's right arm, which the game plays as the left.
 //   - The solve runs in the background (progress, cancel); then a preview: the entry plays the solved frames (Look at it), the left item
@@ -153,7 +154,7 @@ namespace DSAnimStudio.LeftClear
         public static void SaveConfigItems(List<(int id, bool must)> items) =>
             Main.Config.LeftClearItems = string.Join(";", items.Select(x => $"{x.id}:{(x.must ? 1 : 0)}"));
 
-        public static bool TryParsePins(string text, double fps, out List<(int, int)> pins, out string error)
+        public static bool TryParsePins(string text, int frames, out List<(int, int)> pins, out string error)
         {
             pins = new List<(int, int)>();
             error = null;
@@ -165,8 +166,13 @@ namespace DSAnimStudio.LeftClear
                     error = $"'{raw}' is not a frame or a range (3-19)";
                     return false;
                 }
-                // the timeline's frames (30 a second) to the file's own
-                pins.Add(((int)Math.Round(a * fps / 30.0), (int)Math.Round(b * fps / 30.0)));
+                // the animation's own frames, as the playback's 'Frame: X / N' counts them
+                if (b > frames - 1)
+                {
+                    error = $"'{raw}' goes past the animation's last frame, {frames - 1}";
+                    return false;
+                }
+                pins.Add((a, b));
             }
             return true;
         }
@@ -216,7 +222,7 @@ namespace DSAnimStudio.LeftClear
             {
                 return "the entry's hkx can't be decoded: " + e.Message;
             }
-            if (!TryParsePins(pinsText, src.Fps, out var pins, out string perr))
+            if (!TryParsePins(pinsText, src.Frames, out var pins, out string perr))
                 return "Pins: " + perr;
             var skel = HkxSkeleton.FromHavok(skH);
             bool mirror = MirrorPlayback.IsMirrored(proj, entry.SplitID);
@@ -367,7 +373,7 @@ namespace DSAnimStudio.LeftClear
                 o.Add($"  {j.Items[i].Name} ({(j.Items[i].Required ? "must clear" : "best effort")}): {Fig(r.Before)} -> {Fig(r.Held)} -> {Fig(r.After)}");
                 var left = Enumerable.Range(0, r.Frames).Where(f => r.After[f][i].Values.Any(v => v > 0.01)).ToList();
                 if (left.Count > 0 && j.Items[i].Required)
-                    o.Add($"      still over 1 cm at {Frames(left, r.Fps)}");
+                    o.Add($"      still over 1 cm at frames {Frames(left)}");
             }
             o.Add($"The change: the wrist moved up to {r.MoveMax * 100:0.0} cm (median {r.MoveMedian * 100:0.0}); the hand's turn about the forearm "
                   + $"median {r.RollMedian:0}, up to {r.RollMax:0} degrees; bent up to {r.BendMax:0}; the elbow swung up to {r.SwingMax:0}.");
@@ -376,10 +382,9 @@ namespace DSAnimStudio.LeftClear
             return o;
         }
 
-        // the file's frames as the timeline's, in ranges
-        static string Frames(List<int> f, double fps)
+        // the animation's own frames, in ranges
+        static string Frames(List<int> t)
         {
-            var t = f.Select(x => (int)Math.Round(x * 30.0 / fps)).Distinct().ToList();
             var parts = new List<string>();
             for (int i = 0; i < t.Count;)
             {
@@ -715,8 +720,8 @@ namespace DSAnimStudio.LeftClear
             ImGui.PushItemWidth(200 * Main.DPI);
             ImGui.InputTextWithHint("##LeftClear.Pins", "e.g. 3-19, 27", ref pins, 128);
             ImGui.PopItemWidth();
-            Help("Frames (the timeline's, 30 a second) where the arm keeps the animation's own pose: a strike with the left hand,\n"
-                 + "a few frames before the hit to its end. The item may touch the body there.");
+            Help("Frames where the arm keeps the animation's own pose: a strike with the left hand, a few frames before the hit to\n"
+                 + "its end. The item may touch the body there. The animation's own frames, as the playback's 'Frame: X / N' counts them.");
             Label("Hold", column);
             ImGui.Checkbox("Hold the item the game's way##LeftClear.Hold", ref hold);
             Help("Keys L_Weapon as every vanilla one-handed attack keys it (animations exported from 3ds Max often leave it at the\n"
