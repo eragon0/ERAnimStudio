@@ -1,7 +1,8 @@
 // ERAnimStudio: 'New Animation from Current...' in the Edit menu, after 'Duplicate Animation' (Ctrl+Insert): the current animation
 // duplicated to a new ID together with its hkx, both cropped to a frame range when one is given.
-//   - Frames are 60 a second, whatever the file's rate (a 30 fps file's frame N is frame 2N); a crop on an odd frame of a 30 fps file
-//     is sampled from its curves and written at 60 fps (HkxEditPipeline). No first and no last frame: no crop, a copy of the entry and
+//   - Frames are the source hkx's own, at its own rate (30 or 60 a second, or a raw export's), as the transport's 'Frame' counter
+//     counts them while it plays; the timeline's frame numbers count at the snap rate instead (Graph > Snap Actions To Framerate,
+//     30 by FromSoftware's standard), so on a 60 fps file they differ. No first and no last frame: no crop, a copy of the entry and
 //     of its hkx at the new ID. A first and / or a last frame (a missing one is the source's first / last): the hkx is cut to those
 //     frames and the events with it.
 //   - Elden Ring projects only: the hkx it writes are Havok 2018.1, Elden Ring's.
@@ -56,8 +57,7 @@ namespace DSAnimStudio.TaeEditor
     {
         public const string MenuText = "New Animation from Current...";
         public const string Shortcut = "Ctrl+Insert";
-        // every frame the tool reads and shows is a 60 fps frame (a 30 fps file's frame N is frame 2N here)
-        public const double Fps = 60.0;
+        const double GridFps = 60.0;        // event times are snapped back onto the 1/60 s grid, which holds the TAE's 1/30 one
         const double Eps = 0.0005;          // seconds: well under a frame
         static volatile bool busy;
         public static bool Busy => busy;
@@ -285,8 +285,9 @@ namespace DSAnimStudio.TaeEditor
             return true;
         }
 
-        // the source's hkx length in editor frames, when the editor has it decoded (the selected animation plays it)
-        public static int? SourceLastFrame(NewAnimationContainer c, SplitAnimID hkx)
+        // the source's hkx as the editor decoded it (the selected animation plays it): its last frame and its rate, the file's own,
+        // as the transport's 'Frame' counter counts them (the cursor steps by the hkx's frame duration)
+        public static (int last, double fps)? SourceFrames(NewAnimationContainer c, SplitAnimID hkx)
         {
             try
             {
@@ -294,13 +295,20 @@ namespace DSAnimStudio.TaeEditor
                 if (cur == null || cur.Value.CategoryID != hkx.CategoryID || cur.Value.SubID != hkx.SubID)
                     return null;
                 var a = c.CurrentAnimation;
-                return a == null ? null : (int)Math.Round(a.Duration * Fps);
+                if (a == null || !(a.FrameDuration > 0))
+                    return null;
+                return ((int)Math.Round(a.Duration / a.FrameDuration), 1.0 / a.FrameDuration);
             }
             catch
             {
                 return null;
             }
         }
+
+        public static int? SourceLastFrame(NewAnimationContainer c, SplitAnimID hkx) => SourceFrames(c, hkx)?.last;
+
+        // a rate for the messages: 30 / 60 as whole numbers, a raw export's as it is
+        public static string FpsText(double fps) => Math.Abs(fps - Math.Round(fps)) < 0.05 ? $"{Math.Round(fps):0} fps" : $"{fps:0.##} fps";
 
         /// <summary>A line on Havok Content Tools for the dialog: found (where, which version), or what is missing.</summary>
         public static string HctStatus(out bool found)
@@ -442,9 +450,7 @@ namespace DSAnimStudio.TaeEditor
         {
             if (r.Build != null)
                 return $" {WhatOf(r)},";
-            string range = r.Whole ? "" : $" frames {w.Edit.First}-{w.Edit.Last} at 60 fps,";
-            if (w.Edit?.Resampled == true)
-                range += $" sampled between the source's {w.Edit.Fps:0} fps frames, so the new hkx plays at {w.Edit.OutFps:0} fps,";
+            string range = r.Whole ? "" : $" frames {w.Edit.First}-{w.Edit.Last} at the hkx's {FpsText(w.Edit.Fps)},";
             if (r.Mirror)
                 range += " mirrored,";
             if (w.Edit?.Eased == true)
@@ -472,7 +478,7 @@ namespace DSAnimStudio.TaeEditor
                         (w.Hkx, w.Note) = r.Build();
                     else
                         w.Hkx = r.Edits
-                            ? HkxEditPipeline.Make(r.SourceBytes, r.SourceCompendium, r.Skeleton, r.First, r.Last, r.Mirror, r.Hct, out w.Edit, r.EaseRoot, Fps)
+                            ? HkxEditPipeline.Make(r.SourceBytes, r.SourceCompendium, r.Skeleton, r.First, r.Last, r.Mirror, r.Hct, out w.Edit, r.EaseRoot)
                             : r.SourceBytes;
                     w.Binder = HkxBinderWriter.Add(r.Binder, w.Hkx, name, moveTo, r.SourceBytes);
                     Main.WinForm.Invoke(new Action(() =>
@@ -532,7 +538,7 @@ namespace DSAnimStudio.TaeEditor
             anim.SAFE_SetHeader(OwnHkxHeader(r.Source, r.Tae.Proj));
             int dropped = 0, kept = 0;
             if (!r.Whole)
-                (dropped, kept) = CropEvents(anim, w.Edit.First / Fps, w.Edit.Last / Fps);
+                (dropped, kept) = CropEvents(anim, w.Edit.First / w.Edit.Fps, w.Edit.Last / w.Edit.Fps);
             anim.SAFE_SetIsModified(true);
             category.SAFE_AddAnimation(anim, -1);
             category.SAFE_ResortAnimIDs();
@@ -581,7 +587,7 @@ namespace DSAnimStudio.TaeEditor
             anim.SAFE_SetHeader(own);
             int dropped = 0, kept = 0;
             if (!r.Whole)
-                (dropped, kept) = CropEvents(anim, w.Edit.First / Fps, w.Edit.Last / Fps);
+                (dropped, kept) = CropEvents(anim, w.Edit.First / w.Edit.Fps, w.Edit.Last / w.Edit.Fps);
             string range = RangeText(r, w);
             // the original to T (the editor's own ID change: out of its category, into T's, sorted)
             proj.SAFE_RegistAnimationIDChange(original, s, t);
@@ -715,11 +721,12 @@ namespace DSAnimStudio.TaeEditor
             return (true, Snap(Math.Max(start - t0, 0)), Snap(end - t0));
         }
 
-        // back on the 60 fps grid (which holds the 30 fps one) when the time was on it (float subtraction leaves 0.20000002)
+        // back on the 1/60 s grid when the time was on it (float subtraction leaves 0.20000002); a crop of a 60 fps file at an odd
+        // frame moves the events by half a TAE frame, so they land on the 1/60 grid, between the timeline's 30 fps frames
         static float Snap(double t)
         {
-            double f = t * Fps;
-            return Math.Abs(f - Math.Round(f)) < 0.01 ? (float)(Math.Round(f) / Fps) : (float)t;
+            double f = t * GridFps;
+            return Math.Abs(f - Math.Round(f)) < 0.01 ? (float)(Math.Round(f) / GridFps) : (float)t;
         }
     }
 
@@ -733,7 +740,8 @@ namespace DSAnimStudio.TaeEditor
         bool mirror, easeRoot = true;
         int mode;   // 0: copy to a new ID; 1: move the original to the new ID, the copy stays at its ID
         readonly string sourceText;
-        readonly int? sourceLast;
+        readonly int? sourceLast;           // the source hkx's last frame and its rate, the file's own (null while it isn't decoded)
+        readonly double? sourceFps;
         readonly bool hctFound;
         readonly string hctWhy;
         readonly List<TaeEditorScreen> tabs = new();
@@ -760,9 +768,11 @@ namespace DSAnimStudio.TaeEditor
             var proj = tae.Proj;
             var hkx = source.GetHkxID(proj);
             var c = DuplicateCrop.Container(tae);
-            sourceLast = DuplicateCrop.SourceLastFrame(c, hkx);
+            var frames = DuplicateCrop.SourceFrames(c, hkx);
+            sourceLast = frames?.last;
+            sourceFps = frames?.fps;
             sourceText = $"{source.SplitID.GetFormattedIDString(proj, null)}, plays {(hkx.IsValid ? DuplicateCrop.HkxName(hkx) : "no hkx")}"
-                         + (sourceLast != null ? $", frames 0-{sourceLast}" : "");
+                         + (frames != null ? $", frames 0-{frames.Value.last} at {DuplicateCrop.FpsText(frames.Value.fps)}" : "");
             hctFound = HkxEdit.HctCompressor.Find(out hctWhy) != null;
             mirror = DuplicateCrop.LastMirror;
             easeRoot = DuplicateCrop.LastEaseRoot;
@@ -798,10 +808,11 @@ namespace DSAnimStudio.TaeEditor
             ImGui.SetCursorPosX(column);
         }
 
+        // the cursor's frame in the source hkx's own frames, the 'Frame' counter's number rounded
         int? Playhead()
         {
             var cursor = tae.Graph?.PlaybackCursor;
-            return cursor == null ? null : (int)Math.Round(cursor.GUICurrentTimeMod * DuplicateCrop.Fps);
+            return cursor == null ? null : (int)Math.Round(cursor.GUICurrentTimeMod * (sourceFps ?? cursor.CurrentSnapFPS));
         }
 
         protected override void BuildInsideOfWindow()
@@ -856,12 +867,13 @@ namespace DSAnimStudio.TaeEditor
             ImGui.SameLine();
             if (Tools.SimpleClickButton("Playhead##DuplicateCrop.Last", Playhead() != null))
                 last = Playhead()?.ToString() ?? last;
-            Help("Frames at 60 fps (Graph > Snap Actions To Framerate > 60 FPS counts the timeline in them); 'Playhead' takes the timeline's\n"
-                 + "current frame. Both empty: a whole copy, no crop. One empty: the source's first or last frame.\n"
-                 + "On a 30 fps file an odd frame falls between two of the file's: the crop is then sampled from the file's own\n"
-                 + "curves at 60 fps, and the new hkx plays at 60 fps.\n\n"
+            Help("The source hkx's own frames, at its own rate (" + (sourceFps != null ? DuplicateCrop.FpsText(sourceFps.Value) + " here" : "30 or 60 fps")
+                 + "), as the transport's 'Frame' counter\ncounts them; 'Playhead' takes the counter's current frame. The timeline's frame numbers count at the snap rate\n"
+                 + "(Graph > Snap Actions To Framerate, 30 by FromSoftware's standard), so on a 60 fps file they are half the counter's.\n"
+                 + "Both empty: a whole copy, no crop. One empty: the source's first or last frame.\n\n"
                  + "The events are cropped with the frames: an event wholly outside the range is dropped, one running over the\n"
-                 + "first frame starts at 0, one running past the last frame keeps its end, and all move back by the first frame.");
+                 + "first frame starts at 0, one running past the last frame keeps its end, and all move back by the first frame.\n"
+                 + "On a 60 fps file an odd first frame moves them by half a timeline frame: they land between its 30 fps frames.");
 
             Label("Mirror", column);
             ImGui.Checkbox("Swap left and right##DuplicateCrop.Mirror", ref mirror);

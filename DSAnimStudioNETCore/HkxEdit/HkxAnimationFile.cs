@@ -25,9 +25,6 @@ namespace DSAnimStudio.HkxEdit
         public HkClass Binding;
         public HkClass ReferenceFrame;
         public HkxAnimation Decoded;
-        // a spline-compressed file's own curves, kept for sampling between its frames (SampleAt); null for an interleaved one
-        List<SplineCompressedAnimation.TransformTrack[]> splineBlocks;
-        int splinePerBlock;
 
         public static HkxAnimationFile Read(byte[] hkx, byte[] compendium = null)
         {
@@ -116,7 +113,7 @@ namespace DSAnimStudio.HkxEdit
             HkxAnimation a;
             string type = f.Animation.Type.Name;
             if (type == "hkaSplineCompressedAnimation")
-                a = DecodeSpline(f, bones, duration);
+                a = DecodeSpline(f.Animation, bones, duration);
             else if (type == "hkaInterleavedUncompressedAnimation")
                 a = DecodeInterleaved(f.Animation, bones, duration);
             else
@@ -161,9 +158,8 @@ namespace DSAnimStudio.HkxEdit
             return a;
         }
 
-        static HkxAnimation DecodeSpline(HkxAnimationFile file, short[] bones, float duration)
+        static HkxAnimation DecodeSpline(HkClass anim, short[] bones, float duration)
         {
-            var anim = file.Animation;
             int frames = (int)Int(Field(anim, "numFrames"));
             int blocks = (int)Int(Field(anim, "numBlocks"));
             int perBlock = (int)Int(Field(anim, "maxFramesPerBlock"));
@@ -171,8 +167,6 @@ namespace DSAnimStudio.HkxEdit
             if (frames < 1 || blocks < 1 || perBlock < 2)
                 throw new InvalidDataException($"a spline animation with {frames} frames, {blocks} blocks of {perBlock}");
             var decoded = SplineCompressedAnimation.ReadSplineCompressedAnimByteBlock(false, data, bones.Length, blocks);
-            file.splineBlocks = decoded;
-            file.splinePerBlock = perBlock;
             var a = new HkxAnimation(bones, frames) { Duration = duration };
             for (int f = 0; f < frames; f++)
             {
@@ -188,57 +182,6 @@ namespace DSAnimStudio.HkxEdit
                 }
             }
             return a;
-        }
-
-        /// <summary>
-        /// The animation at the given frames of its own, as the frames of a new animation playing at fps. A frame between two of the
-        /// file's is taken from a spline-compressed file's own curves there (what the game plays at that time), or blended between an
-        /// interleaved file's two frames; the root motion is blended between its two samples. The root motion is not re-based
-        /// (<see cref="HkxAnimationOps.Crop"/> does that).
-        /// </summary>
-        public HkxAnimation SampleAt(double[] at, double fps)
-        {
-            var a = Decoded;
-            int n = at.Length;
-            var b = new HkxAnimation(a.Bones.ToArray(), n)
-            {
-                Duration = (float)((n - 1) / fps),
-                SkeletonName = a.SkeletonName,
-                BlendHint = a.BlendHint,
-            };
-            if (a.Root != null)
-                b.Root = new Vector4[n];
-            for (int i = 0; i < n; i++)
-            {
-                double x = Math.Clamp(at[i], 0, a.Frames - 1);
-                int f0 = Math.Min((int)Math.Floor(x), a.Frames - 1), f1 = Math.Min(f0 + 1, a.Frames - 1);
-                float u = (float)(x - f0);
-                if (splineBlocks != null)
-                {
-                    int block = Math.Min((int)(x / (splinePerBlock - 1)), splineBlocks.Count - 1);
-                    float local = (float)(x - block * (splinePerBlock - 1));
-                    for (int k = 0; k < a.Tracks; k++)
-                    {
-                        var (t, q, s) = Sample(splineBlocks[block][k], local, a.Frames);
-                        b.T[i, k] = t;
-                        b.Q[i, k] = q;
-                        b.S[i, k] = s;
-                    }
-                }
-                else
-                {
-                    for (int k = 0; k < a.Tracks; k++)
-                    {
-                        b.T[i, k] = Vector3.Lerp(a.T[f0, k], a.T[f1, k], u);
-                        b.Q[i, k] = Quaternion.Normalize(Quaternion.Slerp(a.Q[f0, k], a.Q[f1, k], u));
-                        b.S[i, k] = Vector3.Lerp(a.S[f0, k], a.S[f1, k], u);
-                    }
-                }
-                if (a.Root != null)
-                    b.Root[i] = Vector4.Lerp(a.Root[f0], a.Root[f1], u);
-            }
-            b.MakeQuaternionsContinuous();
-            return b;
         }
 
         // one track at one frame of its block, as Havok defines the channels: a spline, a static value, or the identity
