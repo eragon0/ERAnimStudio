@@ -1,7 +1,8 @@
 // ERAnimStudio: 'Left Item Check' in the Animation menu. Whether the item in the left hand goes into the body during the animation:
 // the equipped left weapon or shield against the equipped armor, every frame of the animation the selected entry plays, measured on
 // the models' own meshes (LcGeometry, LcMeasure: the clearance measure of the pack's left_clear.py, ported). The right hand's weapon,
-// where the viewer holds it, counts too: as one more body part, 'right weapon' (not in the pack tool).
+// where the viewer holds it, counts too: as one more body part, 'right weapon', and so does the left arm's own armor going through it,
+// 'left arm on right weapon' (neither in the pack tool).
 //   - The timeline gets a strip under its frame numbers: each frame of the hkx green (clear), yellow (under 1 cm), orange to red
 //     (deeper, 5 cm and more red); hovering it names the body parts and how deep.
 //   - The viewport draws where it crosses at the frame shown (the armor coming through a shield's face, or a weapon's points inside
@@ -355,7 +356,7 @@ namespace DSAnimStudio.LeftClear
                     Mirrored = req.Mirrored,
                     Fps = a.Fps,
                     Frames = rows.Length,
-                    Rows = rows.Select(x => x[0]).ToArray(),
+                    Rows = rows.Select(LcMeasure.WithArm).ToArray(),
                     Seconds = (DateTime.Now - t0).TotalSeconds,
                 };
                 r.Worst = r.Rows.Select(d => d.Count == 0 ? 0 : d.Values.Max()).ToArray();
@@ -626,7 +627,8 @@ namespace DSAnimStudio.LeftClear
                 + "equipped armor and the right hand's weapon, every frame of the selected animation. A strip under the timeline's frame "
                 + "numbers colours each frame (green clear, yellow under 1 cm, orange to red deeper; hover it for the body parts), the "
                 + "viewport marks where it crosses and the status lists it. A shield counts the armor and the right weapon coming through "
-                + "its face, any other item its points inside the armor and on both sides of the right weapon's blade.");
+                + "its face, any other item its points inside the armor; both cross the right weapon mesh against mesh, and the left "
+                + "arm's own armor counts against the right weapon too.");
         }
     }
 }

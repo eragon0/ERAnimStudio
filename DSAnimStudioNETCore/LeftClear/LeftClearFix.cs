@@ -4,7 +4,7 @@
 //   - Items: the equipped left weapon or shield and a list of weapons by ID kept in the config, each 'must clear' or best effort; each
 //     hangs on the dummy its WepAbsorpPosParam gives the left hand. Armor: what the character wears (the meshes the draw mask hides
 //     left out), and the equipped right weapon on its one-handed dummy, kept clear as a body part ('right weapon'; unequip it to leave
-//     it out).
+//     it out), by the items and by the left arm's own armor, which must clear it as a must-clear item does (the report's own line).
 //   - The limits are the user's (kept in the config): the wrist's move (cm), the roll offset from the palm-in turn, the two wrist bends,
 //     the elbow's swing (degrees). Defaults: the pack tool's 12 cm, 30, 60, 60, 60.
 //   - Pins: frames where the arm keeps the source's pose, a strike thrown with the left hand. Pins and the report count the animation's
@@ -37,6 +37,7 @@ namespace DSAnimStudio.LeftClear
     public static class LeftClearFix
     {
         public const string MenuText = "Left Arm Clearance...";
+        public const string Shortcut = "Ctrl+Shift+L";
 
         /// <summary>One solve: its inputs, its state, its result.</summary>
         public sealed class Job
@@ -385,6 +386,17 @@ namespace DSAnimStudio.LeftClear
                 if (left.Count > 0 && j.Items[i].Required)
                     o.Add($"      still over 1 cm at frames {Frames(left)}");
             }
+            if (r.Before.Length > 0 && r.Before[0].Length > j.Items.Count)
+            {
+                // the left arm's own armor through the right weapon: the row after the items' (LcMeasure.DepthsAll), must clear
+                int a = j.Items.Count;
+                string Fig(Dictionary<string, double>[][] rows) =>
+                    $"{rows.Count(x => x[a].Values.Any(v => v > 0.01))} ({rows.Max(x => x[a].Count == 0 ? 0 : x[a].Values.Max()) * 100:0.0} cm)";
+                o.Add($"  The left arm on the right weapon (must clear): {Fig(r.Before)} -> {Fig(r.Held)} -> {Fig(r.After)}");
+                var left = Enumerable.Range(0, r.Frames).Where(f => r.After[f][a].Values.Any(v => v > 0.01)).ToList();
+                if (left.Count > 0)
+                    o.Add($"      still over 1 cm at frames {Frames(left)}");
+            }
             o.Add($"The change: the wrist moved up to {r.MoveMax * 100:0.0} cm (median {r.MoveMedian * 100:0.0}); the hand's turn about the forearm "
                   + $"median {r.RollMedian:0}, up to {r.RollMax:0} degrees; bent up to {r.BendMax:0}; the elbow swung up to {r.SwingMax:0}.");
             o.Add($"The palm to the torso's line: {r.PalmBefore:0} degrees on median before, {r.PalmAfter:0} after ({r.PalmWithin45 * 100:0}% of frames within 45; "
@@ -460,6 +472,7 @@ namespace DSAnimStudio.LeftClear
         LeftClearFix.Job targetFor;
         bool move;
         readonly bool hctFound;
+        int shownPhase = -1, recenter;  // the window centred again when its content changes
 
         static readonly Vector4 Green = new Vector4(0.45f, 0.9f, 0.45f, 1f);
         static readonly Vector4 Amber = new Vector4(1f, 0.75f, 0.3f, 1f);
@@ -538,6 +551,23 @@ namespace DSAnimStudio.LeftClear
             {
                 Dismiss();
                 return;
+            }
+
+            // centred on the screen whenever what it shows changes (inputs, solving, the report): the window grows with its content
+            // from where it was, and its new size is known a frame later, so for a few frames
+            int phase = mine && j.Running ? 1 : mine && j.Result != null ? 2 : 0;
+            if (phase != shownPhase)
+            {
+                shownPhase = phase;
+                recenter = 4;
+            }
+            if (recenter > 0)
+            {
+                recenter--;
+                var vp = ImGui.GetMainViewport();
+                var size = ImGui.GetWindowSize();
+                var pos = vp.WorkPos + (vp.WorkSize - size) / 2;
+                ImGui.SetWindowPos(new Vector2(Math.Max(vp.WorkPos.X, pos.X), Math.Max(vp.WorkPos.Y, pos.Y)));
             }
 
             // ---- a solve running
@@ -706,8 +736,9 @@ namespace DSAnimStudio.LeftClear
             Label("Right hand", column);
             var rightSlot = tae.Graph?.ViewportInteractor?.CurrentModel?.ChrAsm?.WeaponSlots.FirstOrDefault(s => s.EquipSlotType == NewChrAsm.EquipSlotTypes.RightWeapon);
             ImGui.Text(rightSlot?.EquipParam != null ? $"{Name(rightSlot.EquipID)}  (kept clear like the armor)" : "nothing");
-            Help("The equipped right weapon counts as a body part, 'right weapon', held where the game holds it one-handed: a shield's\n"
-                 + "face must not cross it, another item's points must not stand on both sides of its blade. Unequip it to leave it out.");
+            Help("The equipped right weapon counts as a body part, 'right weapon', held where the game holds it one-handed: the items\n"
+                 + "must not cross it, and the left arm's own armor must not go through it either (it must clear, like a must-clear item).\n"
+                 + "Unequip it to leave it out.");
             ImGui.Separator();
 
             Label("Limits", column);

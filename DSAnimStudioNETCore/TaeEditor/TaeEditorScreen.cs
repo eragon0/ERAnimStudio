@@ -3810,6 +3810,12 @@ namespace DSAnimStudio.TaeEditor
                 {
                     DuplicateCrop.ShowDialog(this);
                 }
+                // ERAnimStudio: Left Arm Clearance (Ctrl+Shift+L; Ctrl+L alone is the transport's loop toggle)
+                else if (Input.CtrlHeld && Input.ShiftHeld && !Input.AltHeld && Input.KeyDown(Keys.L) && !Graph.IsGhostGraph
+                         && LeftClear.LeftClearFix.Enabled(this))
+                {
+                    LeftClear.LeftClearFix.ShowDialog(this);
+                }
 
                 if (Input.KeyDownNoMods(Keys.Escape) && Proj != null)
                 {

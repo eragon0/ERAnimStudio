@@ -471,12 +471,13 @@ namespace DSAnimStudio.LeftClear
 
         static double[] Times(double[] x, double[] s) => x.Select((v, i) => v * s[i]).ToArray();
 
+        // the items' rows, then the left arm's own on the right weapon (LcMeasure.DepthsAll), which must clear as a required item
         double Penalty(Dictionary<string, double>[] dep, IList<LcItem> names)
         {
             double c = 0;
-            for (int i = 0; i < names.Count; i++)
+            for (int i = 0; i < dep.Length; i++)
             {
-                double w = names[i].Required ? WeightRequired : WeightBest;
+                double w = i >= names.Count || names[i].Required ? WeightRequired : WeightBest;
                 foreach (var v in dep[i].Values)
                     c += w * (v * 100) * (v * 100);
             }
@@ -485,7 +486,7 @@ namespace DSAnimStudio.LeftClear
 
         double Pen(int f, double[] x, IList<LcItem> names)
         {
-            if (names.Count == 0)
+            if (names.Count == 0 && input.Body.RightWeapon == null)
                 return 0;
             var (wt, wq, _, _) = arms[f].PosePalm(Times(x, Sigma), planes[f], palmW[f]);
             return Penalty(measure.DepthsAll(statics[f], wt, wq, names, true), names);
@@ -602,8 +603,8 @@ namespace DSAnimStudio.LeftClear
         double WorstRequired(Dictionary<string, double>[] row)
         {
             double m = 0;
-            for (int i = 0; i < items.Count; i++)
-                if (items[i].Required)
+            for (int i = 0; i < row.Length; i++)
+                if (i >= items.Count || items[i].Required)
                     foreach (var v in row[i].Values)
                         m = Math.Max(m, v);
             return m;

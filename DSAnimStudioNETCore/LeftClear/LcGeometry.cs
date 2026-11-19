@@ -344,6 +344,21 @@ namespace DSAnimStudio.LeftClear
         public readonly int[] GrpLab;           // per shell
         public readonly int[] StaticV, MovingV;
 
+        // the arm's own armor against the right weapon (LcMeasure.ArmCross): its mesh's edges, two indices into MovingV each, and its
+        // vertices by strongest bone with a ball around them (in the bone's frame; 5 cm over the rigid reach for the skinning); only the
+        // vertices whose strongest bone is from L_UpperArm down
+        public readonly int[] ArmE;
+        public readonly ArmGroup[] ArmGroups;
+        public sealed class ArmGroup
+        {
+            public int Bone;
+            public D3 Centre;
+            public double Reach;
+            public int[] K;                     // indices into MovingV
+            public int[] E;                     // the arm's edges whose first end is one of K, two indices into MovingV each
+        }
+        public const string ArmPart = "left arm on right weapon";
+
         // rigid per bone, for the inside test of points
         public readonly List<int> BodyBones = new List<int>();
         public readonly Dictionary<int, (D3[] v, D3[] n)> Rigid = new Dictionary<int, (D3[] v, D3[] n)>();
@@ -395,6 +410,7 @@ namespace DSAnimStudio.LeftClear
             var top = new List<int>();
             var topK = new List<int>();
             var label = new List<string>();
+            var tris = new List<int[]>();
             foreach (var piece in pieces)
             {
                 var f = piece.Flver;
@@ -413,6 +429,14 @@ namespace DSAnimStudio.LeftClear
                         continue;
                     if (!LcFlver.HasTogether(f, m, FLVER.LayoutSemantic.Position, FLVER.LayoutSemantic.BoneWeights, FLVER.LayoutSemantic.BoneIndices))
                         continue;
+                    int baseV = top.Count;
+                    if (m.FaceSets.Count > 0)
+                    {
+                        var idx = m.FaceSets[0].Triangulate(false, true);
+                        for (int i = 0; i + 2 < idx.Count; i += 3)
+                            if (idx[i] < m.Vertices.Count && idx[i + 1] < m.Vertices.Count && idx[i + 2] < m.Vertices.Count)
+                                tris.Add(new[] { baseV + idx[i], baseV + idx[i + 1], baseV + idx[i + 2] });
+                    }
                     foreach (var v in m.Vertices)
                     {
                         var p = D3.From(v.Position);
@@ -478,6 +502,52 @@ namespace DSAnimStudio.LeftClear
             }
             MovingV = mv.ToArray();
             StaticV = st.ToArray();
+
+            // ---- the arm's own mesh against the right weapon: its edges (both ends on the arm) and its vertices by strongest bone. Only
+            // the vertices whose strongest bone is the arm's: the chest and shoulder armor some arm weight moves (Spine2, L_Clavicle,
+            // L_Pectoral) is the torso, which the right blade crosses whatever the left arm does
+            var at = Enumerable.Repeat(-1, Count).ToArray();
+            for (int k = 0; k < MovingV.Length; k++)
+                if (MovingBone[Top[MovingV[k]]])
+                    at[MovingV[k]] = k;
+            var seen = new HashSet<long>();
+            var armE = new List<int>();
+            foreach (var t in tris)
+                for (int k = 0; k < 3; k++)
+                {
+                    int a = at[t[k]], b = at[t[(k + 1) % 3]];
+                    if (a < 0 || b < 0 || a == b)
+                        continue;
+                    long key = (long)Math.Min(a, b) << 32 | (uint)Math.Max(a, b);
+                    if (seen.Add(key))
+                    {
+                        armE.Add(a);
+                        armE.Add(b);
+                    }
+                }
+            ArmE = armE.ToArray();
+            ArmGroups = MovingV.Select((i, k) => (i, k)).Where(x => MovingBone[Top[x.i]]).GroupBy(x => Top[x.i]).Select(g =>
+            {
+                var ks = g.Select(x => x.k).ToArray();
+                var ps = g.Select(x => L[x.i * 4 + TopK[x.i]]).ToArray();
+                var c = D3.Zero;
+                foreach (var p in ps)
+                    c = c + p;
+                c = c / ps.Length;
+                return new ArmGroup { Bone = g.Key, Centre = c, Reach = ps.Max(p => (p - c).Length()) + 0.05, K = ks };
+            }).ToArray();
+            var groupOf = new int[MovingV.Length];
+            for (int g = 0; g < ArmGroups.Length; g++)
+                foreach (int k in ArmGroups[g].K)
+                    groupOf[k] = g;
+            var perGroup = ArmGroups.Select(_ => new List<int>()).ToArray();
+            for (int e = 0; e + 1 < ArmE.Length; e += 2)
+            {
+                perGroup[groupOf[ArmE[e]]].Add(ArmE[e]);
+                perGroup[groupOf[ArmE[e]]].Add(ArmE[e + 1]);
+            }
+            for (int g = 0; g < ArmGroups.Length; g++)
+                ArmGroups[g].E = perGroup[g].ToArray();
 
             // ---- rigid per bone (fh_body_check.load_body): each vertex on its strongest bone, cloth left out
             var acc = new Dictionary<int, (List<D3> v, List<D3> n)>();
@@ -599,6 +669,7 @@ namespace DSAnimStudio.LeftClear
         public bool[,] Mask;
         public double[,] EdgeDist;       // per bin of the outline: how far its centre is from the outline's edge, in the plate (m)
         public double MidMean;           // the mid surface's mean height (z), for a point off the outline
+        public double MidMin, MidMax;    // its lowest and highest over the outline (LcMeasure.ArmCross's cull)
         public D3 Half;
         public double Radius;
 
@@ -747,6 +818,15 @@ namespace DSAnimStudio.LeftClear
                 for (int j = 0; j < it.Ny; j++)
                     it.EdgeDist[i, j] = it.Mask[i, j] ? (d[i, j] - 0.5) * bin : 0;
             it.MidMean = count > 0 ? mids / count : 0;
+            it.MidMin = it.MidMax = it.MidMean;
+            for (int i = 0; i < it.Nx; i++)
+                for (int j = 0; j < it.Ny; j++)
+                    if (it.Mask[i, j])
+                    {
+                        double m = (it.Zf[i, j] + it.Zb[i, j]) / 2;
+                        it.MidMin = Math.Min(it.MidMin, m);
+                        it.MidMax = Math.Max(it.MidMax, m);
+                    }
             return it;
         }
 

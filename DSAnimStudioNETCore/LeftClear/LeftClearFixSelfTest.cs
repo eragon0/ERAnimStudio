@@ -291,7 +291,7 @@ namespace DSAnimStudio.LeftClear
                         for (int k = 0; k < Math.Min(r.Frames, j.Result.Frames); k++)
                         {
                             var x = r.Rows[k];
-                            var y = j.Result.After[k][0];
+                            var y = LcMeasure.WithArm(j.Result.After[k]);
                             foreach (var p in x.Keys.Union(y.Keys))
                                 worst = Math.Max(worst, Math.Abs((x.TryGetValue(p, out var a) ? a : 0) - (y.TryGetValue(p, out var b2) ? b2 : 0)));
                         }

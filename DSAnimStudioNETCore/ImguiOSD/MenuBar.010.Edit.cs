@@ -119,7 +119,7 @@ namespace DSAnimStudio.ImguiOSD
                 if (ClickItem(TaeEditor.DuplicateCrop.MenuText, TaeEditor.DuplicateCrop.Enabled(Tae), TaeEditor.DuplicateCrop.Shortcut))
                     TaeEditor.DuplicateCrop.ShowDialog(Tae);
                 // ERAnimStudio: the left arm kept off the body (LeftClear\LeftClearFix.cs)
-                if (ClickItem(LeftClear.LeftClearFix.MenuLabel(Tae), LeftClear.LeftClearFix.Enabled(Tae)))
+                if (ClickItem(LeftClear.LeftClearFix.MenuLabel(Tae), LeftClear.LeftClearFix.Enabled(Tae), LeftClear.LeftClearFix.Shortcut))
                     LeftClear.LeftClearFix.ShowDialog(Tae);
 
                 if (ClickItem("Duplicate Animation Category", Tae.IsFileOpen, "Shift+Insert"))
