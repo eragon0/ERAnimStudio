@@ -255,9 +255,22 @@ namespace DSAnimStudio.LiveRefresh
                                 {
                                     if (Memory.ER_WorldChrManPtr == IntPtr.Zero)
                                         return false;
-                                    memeStructOffset1 = Memory.GetIngameReloadIniOptionIntHex("ER_WorldChrManStructOffset1") ?? 0x185C0;
-                                    memeStructOffset2 = Memory.GetIngameReloadIniOptionIntHex("ER_WorldChrManStructOffset2") ?? 0x185C8;
-                                    memeStructOffset3 = Memory.GetIngameReloadIniOptionIntHex("ER_WorldChrManStructOffset3") ?? 0x185D0;
+                                    // ERAnimStudio: without the crash patch the game frees the request with its own allocator and
+                                    // crashes; without the offsets the request goes into the wrong members of WorldChrMan (the cause
+                                    // of the crash on game 2.7.2.0: the members had moved 0x10 past the ini's). Both are refused.
+                                    int? reloadOffset = Memory.ER_ReloadRequestOffset;
+                                    if (Memory.ER_CrashFixPtr == IntPtr.Zero
+                                        || (reloadOffset == null && Memory.GetIngameReloadIniOptionIntHex("ER_WorldChrManStructOffset1") == null))
+                                    {
+                                        zzz_NotificationManagerIns.PushNotificationError("Live reload: this version of Elden Ring isn't supported " +
+                                            "(the reload code wasn't found in it). Nothing was sent to the game.", showDuration: 10);
+                                        return false;
+                                    }
+                                    // ERAnimStudio: the ini's offsets win when set (an override for a game ER Anim Studio's read
+                                    // gets wrong), else the ones read from the game's code
+                                    memeStructOffset1 = Memory.GetIngameReloadIniOptionIntHex("ER_WorldChrManStructOffset1") ?? reloadOffset.Value;
+                                    memeStructOffset2 = Memory.GetIngameReloadIniOptionIntHex("ER_WorldChrManStructOffset2") ?? memeStructOffset1 + 8;
+                                    memeStructOffset3 = Memory.GetIngameReloadIniOptionIntHex("ER_WorldChrManStructOffset3") ?? memeStructOffset1 + 0x10;
                                     worldChrManPtr = Memory.ER_WorldChrManPtr;
                                     crashFixPtr = Memory.ER_CrashFixPtr;
                                     dataPointer = Memory.ReadInt64((IntPtr)Memory.ReadInt64(Memory.ER_WorldChrManPtr + (memeStructOffset1)) + 0x0);
@@ -282,6 +295,12 @@ namespace DSAnimStudio.LiveRefresh
                                 if (zzz_DocumentManager.CurrentDocument.GameRoot.GameType is SoulsAssetPipeline.SoulsGames.AC6)
                                 {
                                     Memory.WriteInt8(chrReload_DataSetup + 0x68, 0x5);
+                                }
+                                else
+                                {
+                                    // ERAnimStudio: the name's length too (the string at +0x58 is a std::wstring: length +0x68,
+                                    // capacity +0x70), so the request is a whole string whatever the game reads
+                                    Memory.WriteInt8(chrReload_DataSetup + 0x68, (byte)chrName.Length);
                                 }
 
                                 Memory.WriteInt8(chrReload_DataSetup + 0x70, 0x1F); // String length

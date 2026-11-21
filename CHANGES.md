@@ -24,6 +24,7 @@ Based on DS Anim Studio 5.0-RC6.1 (upstream commit `f1bff06`, "v5-rc6.1 - crash 
 - **Duplicate Animation in ID order** (2026-11-17): the copy is sorted into its category straight away.
 - **Left Arm Clearance's window centred** (2026-11-19): it is centred on the screen again whenever what it shows changes (the inputs, the solve's progress, the report); it grew from where it was, so the report after a solve sat off centre.
 - **Duplicates of an entry importing its own hkx** (2026-11-17, `TaeEditorScreen.ImmediateImportAnim`): the copy keeps the import, instead of playing an hkx under its new ID that doesn't exist.
+- **Live reload of a character crashed Elden Ring** (2026-11-21, `LiveRefresh\Memory.cs`, `RequestFileReload.cs`, `Res\IngameReload_ER.ini`): the ini's WorldChrMan offsets of the reload request list, its count and its timer (`1E668`, `1E670`, `1E678`) were an older game's; on game 2.7.2.0 the members sit 0x10 further (`1E678`, `1E680`, `1E688`), so the request went into the wrong list and the count and timer overwrote two pointers. The offsets are now read from the game's own code (the routine the crash patch AOB already finds loads the member before the list), the ini's three lines removed (setting them still overrides); a game whose code isn't found is refused with a message instead of being written to, and the request carries its name's length.
 
 ### Changed
 

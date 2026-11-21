@@ -147,11 +147,30 @@ namespace DSAnimStudio.LiveRefresh
 
             var crashPatchOffsetAob = AOBScanner.StringToAOB(GetIngameReloadIniOption("ER_CrashPatchOffset_AOB") ?? "80 65 ?? FD 48 C7 45 ?? 07 00 00 00 ?? 8D 45 48 4C 89 60 ?? 48 83 78 ?? 08 72 03 48 8B 00 66 44 89 20 49 8B 8F ?? ?? ?? ?? 48 8B 01 48 ?? ??");
             IntPtr crashPatchOffset = aob.Scan(crashPatchOffsetAob);
+            ER_ReloadRequestOffset = null;
             if (crashPatchOffset == IntPtr.Zero)
+            {
+                // ERAnimStudio: no patch address then, rather than one a few bytes past zero
                 zzz_NotificationManagerIns.PushNotificationWarn("Live reload WARNING - Could not find Elden Ring crash patch AOB");
+                ER_CrashFixPtr = IntPtr.Zero;
+                return;
+            }
+            // ERAnimStudio: the AOB is the end of the game's routine that consumes the reload requests (eldenring.exe 2.7.2.0:
+            // 0x140509ef0). Its 'mov rcx,[r15+disp32]' (49 8B 8F, the disp 37 bytes in) loads the WorldChrMan member that frees
+            // each request; the request list, its count and its timer are the next three members. Read from the game's code, so
+            // the offsets follow a game update as long as the AOB still matches.
+            int allocatorAt = GetIngameReloadIniOptionInt("ER_ReloadAllocatorOffsetInAOB") ?? 37;
+            if ((Kernel32.ReadUInt32(ProcessHandle, crashPatchOffset + allocatorAt - 3) & 0xFFFFFF) == 0x8F8B49)
+                ER_ReloadRequestOffset = Kernel32.ReadInt32(ProcessHandle, crashPatchOffset + allocatorAt) + 8;
             crashPatchOffset = crashPatchOffset + crashPatchOffsetAob.Length - (GetIngameReloadIniOptionInt("ER_CrashPatchOffset_DistFromEndOfAOB") ?? 3);
             ER_CrashFixPtr = crashPatchOffset;
         }
+
+        /// <summary>
+        /// ERAnimStudio: WorldChrMan's offset of the reload request list (its count and its timer follow at +8 and +0x10),
+        /// read from the crash patch AOB's code; null when it couldn't be read.
+        /// </summary>
+        public static int? ER_ReloadRequestOffset = null;
 
         public static void UpdateAOBs_ERNR()
         {
