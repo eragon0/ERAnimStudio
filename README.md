@@ -13,7 +13,7 @@ Get the zip from the [Releases](https://github.com/eragon0/ERAnimStudio/releases
 - Windows 10 or 11, 64-bit, with a DirectX 11 graphics card.
 - [.NET 9 Desktop Runtime (x64)](https://dotnet.microsoft.com/en-us/download/dotnet/9.0).
 - Elden Ring's `oo2core_6_win64.dll` (Oodle), which isn't in the zip: the program copies it from your game folder the first time it needs it, or asks you to browse to it.
-- For crops and mirrors only: **Havok Content Tools 2018.1**. It is Havok's software and can't be shipped with this program. ER Anim Studio finds it on launch (the path given in the settings, the `HCT_FILTER_MANAGER` environment variable, the entry its installer writes in the registry, or its default folder) and shows where in **Toolbox > [Havok Content Tools]**, where you can also set the path by hand. Only version 2018.1 is used, since Elden Ring's animations are Havok 2018.1. Whole copies don't need it.
+- For crops, mirrors and hkx editing: **Havok Content Tools 2018.1**. ER Anim Studio finds it on launch and shows where in **Toolbox > [Havok Content Tools]**, where you can also set the path by hand. Only version 2018.1 is used, since Elden Ring's animations are Havok 2018.1.
 
 ## What it adds
 
@@ -22,21 +22,19 @@ Get the zip from the [Releases](https://github.com/eragon0/ERAnimStudio/releases
 **Edit > New Animation from Current...** (Ctrl+Insert) makes a new animation from the selected one, with an hkx file of its own. DS Anim Studio's **Duplicate Animation** copies only the TAE entry, which then plays the same hkx as the original.
 
 - **Copy or move:** copy the animation to a new ID, or move the original to the new ID and leave the copy in its place. When the original plays its own hkx, that file is renamed with it, and entries that import the original follow it.
-- **Crop:** keep only a frame range, in the animation's own frames as the playback's **Frame: X / N** counter shows them (an hkx is 30 or 60 fps; the dialog names the rate, and the Playhead buttons take the counter's current frame). The timeline's frame numbers stay at 30 fps (Graph > Snap Actions To Framerate), so on a 60 fps file they are half the counter's. The root motion starts again from the first frame kept, and the events are cut to the same range. With **Start the body on the character** (on by default), the root bone's sideways offset from the character at that frame, which can be tens of centimetres in the middle of a game attack, is moved into the root motion and handed back to the root bone over the animation: the body moves exactly as before, starts on the character and ends where the original does. Untick it for grabs, throws and critical attacks.
+- **Crop:** keep only a frame range, uses the same fps of the hkx it's editing. The root motion starts again from the first frame kept, and the events are cut to the same range. With **Start the body on the character** (on by default), the root bone's sideways offset from the character at that frame, which can be tens of centimetres in the middle of a game attack, is moved into the root motion and handed back to the root bone over the animation: the body moves exactly as before, starts on the character and ends where the original does. Untick it for grabs, throws and critical attacks.
 - **Mirror:** swap left and right in the hkx (each bone takes its twin's pose, the root motion's sideways drift and turn flip). The events stay as they are.
-- **Where it goes:** into any open tab, and into the split animation binder you pick (the character's `cNNNN_*.anibnd.dcx` in the mod folder's `chr` folder).
-- **Checked as you type:** the dialog says whether the new ID is free, keeps Accept off until the request can go ahead, and sums up what Accept will write and where.
+- **Where it goes:** into any open tab, and into the animation binder you pick.
 
 Things to know:
 
 - The new hkx is written into the binder **immediately**, not when you save the project.
 - Crops and mirrors are re-encoded the way Elden Ring's files are, spline-compressed by Havok Content Tools.
-- The game plays a new animation ID only if the character's behavior (`c0000.behbnd.dcx`) has a clip for it, and weapon-side animations in a weapon's model follow animation IDs too. Neither is changed by this tool.
 - Elden Ring projects only.
 
 ### Play Mirrored
 
-**Animation > Play Mirrored (this entry)** plays the selected entry left and right swapped, the way the game plays it when its behavior clip has the mirror flag (as most of Elden Ring's left-hand attacks do). The editor doesn't read the behavior, so you mark such entries yourself; the mark lasts until you close the program. The Left Item Check and the Left Arm Clearance work on the mirrored pose of a marked entry.
+**Animation > Play Mirrored (this entry)** plays the selected entry left and right swapped, the way the game plays it when its behavior clip has the mirror flag (as most of Elden Ring's left-hand attacks do). The editor doesn't read the behavior, so you mark such entries yourself; the mark lasts until you close the program. The Left Item Check and the Left Arm Clearance work on the mirrored pose of a marked entry. It's useful to check visually how the moveset flows for animations you plan to mirror through their behbnd registration.
 
 ### Left Item Check
 
@@ -52,9 +50,9 @@ Armor pieces the equipment hides don't count. Unequip the right weapon to leave 
 **Edit > Left Arm Clearance...** (Ctrl+Shift+L) moves the left arm of a one-handed animation so the left-hand items stay off the body and off the right-hand weapon, and keeps the arm itself from going through the right-hand weapon. Typical use: a right-hand attack whose free left arm swings a shield or a second weapon through the torso.
 
 - **Items:** the equipped left item, plus any weapon IDs you add to the list; each one either must clear or is cleared as far as possible.
-- **Limits:** how far the wrist may move and how far the arm may turn (12 cm and 30 / 60 / 60 / 60 degrees by default); your values are kept.
-- **Pins:** frame ranges where the arm keeps its own pose, for a left-hand strike or a grab (in the animation's own frames, as the **Frame: X / N** counter shows them).
-- **Preview first:** the solve runs in the background (you can close the window meanwhile); its report gives the depth before and after for each item and the frames still over 1 cm, and **Look at it** plays the result with the Left Item Check measuring it. Nothing is written until you choose to.
+- **Limits:** how far the wrist may move and how far the arm may turn (12 cm and 30 / 60 / 60 / 60 degrees by default).
+- **Pins:** frame ranges where the arm keeps its own pose.
+- **Preview first:** the solve runs in the background; its report gives the depth before and after for each item and the frames still over 1 cm, and **Look at it** plays the result with the Left Item Check measuring it. Nothing is written until you choose to.
 - **Writing** works as New Animation from Current does: a new entry at a new ID (the first free one is offered) with the entry's events and its own hkx, or, with **Move the original to the new ID**, the original moved there and the fixed copy in its place. It needs Havok Content Tools 2018.1.
 
 An entry marked Play Mirrored is solved as the game plays it, and the copy is written back unmirrored.
