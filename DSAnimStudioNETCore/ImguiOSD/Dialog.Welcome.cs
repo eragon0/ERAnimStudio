@@ -33,7 +33,7 @@ namespace DSAnimStudio.ImguiOSD
             
             protected override void BuildInsideOfWindow()
             {
-                var thisDialogSize = new Vector2(640, 480) * Main.DPIVector;   // ERAnimStudio: room for the text without scrolling
+                var thisDialogSize = new Vector2(640, 600) * Main.DPIVector;   // ERAnimStudio: room for the text without scrolling
                 var windowSize = Program.MainInstance.Window.ClientBounds.Size.ToVector2();
 
                 ImGui.SetWindowPos(((windowSize / 2) - (thisDialogSize / 2)).ToCS());
@@ -46,9 +46,15 @@ namespace DSAnimStudio.ImguiOSD
                     "- Edit > New Animation from Current (Ctrl+Insert): a new animation from the selected one, " +
                     "with its own hkx, copied or moved to a new ID, cropped to a frame range and / or mirrored, " +
                     "written into the split animation binder you pick.\n\n" +
-                    "- Crops and mirrors need Havok Content Tools 2018.1: see Toolbox > [Havok Content Tools].\n\n" +
-                    "- Fixes: no lag with weapons that carry hundreds of animations, Enter saves Edit Animation " +
-                    "Properties (F3), duplicates land in ID order.\n\n" +
+                    "- Animation > Play Mirrored: an entry played left and right swapped, as the game plays a " +
+                    "mirrored clip. Animation > Left Item Check: whether the left-hand item goes into the body " +
+                    "or the right-hand weapon, frame by frame.\n\n" +
+                    "- Edit > Left Arm Clearance (Ctrl+Shift+L): the left arm moved so the left-hand items stay " +
+                    "off the body, previewed before it is written as a new animation.\n\n" +
+                    "- Crops, mirrors and the clearance's copies need Havok Content Tools 2018.1: see " +
+                    "Toolbox > [Havok Content Tools].\n\n" +
+                    "- Fixes: the in-game reload (F5) no longer crashes Elden Ring, no lag with weapons that carry " +
+                    "hundreds of animations, Enter saves Edit Animation Properties (F3), duplicates land in ID order.\n\n" +
                     "Everything else works as in DS Anim Studio. More on the project's page:");
                 // ERAnimStudio: the project's page on a row of its own, opened in the browser on a click
                 const string projectPage = "https://github.com/eragon0/ERAnimStudio";

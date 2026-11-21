@@ -29,7 +29,7 @@ namespace DSAnimStudio
         // STOP MOVING THESE FIELDS DOWN LMAO
         public const string DSAS_VERSION_STRING = "5.0-RC6.1";
         // ERAnimStudio: the fork's version, the DS Anim Studio release it is built on plus its own count
-        public const string ERAS_VERSION_STRING = DSAS_VERSION_STRING + "-er.1";
+        public const string ERAS_VERSION_STRING = DSAS_VERSION_STRING + "-er.2";
         public static bool IsPatreonBuild => false;
 
 
